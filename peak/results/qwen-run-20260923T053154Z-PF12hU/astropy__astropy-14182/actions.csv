@@ -1,0 +1,105 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,frozen_during,command
+0,1,1,473019628819864,473019961440864,0,0,False,"find /testbed -type f -name ""*.py"" | grep -i ascii | grep -i rst"
+1,1,2,473019961453999,473020172625155,0,0,False,"find /testbed -type f -name ""*.py"" | grep -i ascii"
+2,2,1,473020172637268,473020367015276,0,0,False,cat /testbed/astropy/io/ascii/rst.py
+3,3,1,473020367024674,473020551883209,0,0,False,cat /testbed/astropy/io/ascii/fixedwidth.py
+4,4,1,473020551892777,473020738914294,0,0,False,"grep -A 20 -B 20 ""header_rows"" /testbed/astropy/io/ascii/core.py | head -100"
+5,5,1,473020738920476,473020925379930,1,1,False,"grep -n ""header_rows"" /testbed/astropy/io/ascii/core.py"
+6,6,1,473020925387034,473021114556454,1,1,False,"grep -n -i ""header.*rows"" /testbed/astropy/io/ascii/core.py || grep -n -i ""rows.*header"" /testbed/astropy/io/ascii/core.py"
+7,7,1,473021114564981,473021301833651,0,0,False,"grep -n ""class.*Writer"" /testbed/astropy/io/ascii/core.py"
+8,8,1,473021301841475,473021483935743,0,0,False,"sed -n '50,100p' /testbed/astropy/io/ascii/core.py"
+9,9,1,473021483942305,473021672416764,0,0,False,"grep -n ""class FixedWidth"" /testbed/astropy/io/ascii/fixedwidth.py"
+10,10,1,473021672428556,473021855779923,0,0,False,"sed -n '306,360p' /testbed/astropy/io/ascii/fixedwidth.py"
+11,11,1,473021855797977,473022041907796,0,0,False,"sed -n '65,100p' /testbed/astropy/io/ascii/fixedwidth.py"
+12,12,1,473022041916682,473022230532717,0,0,False,"sed -n '85,120p' /testbed/astropy/io/ascii/fixedwidth.py"
+13,13,1,473022230541303,473022416719611,0,0,False,"grep -A 20 ""class FixedWidthData"" /testbed/astropy/io/ascii/fixedwidth.py"
+14,14,1,473022416733897,473022601557383,0,0,False,"sed -n '252,300p' /testbed/astropy/io/ascii/fixedwidth.py"
+15,15,1,473022601562242,473022786042288,0,0,False,cat /testbed/astropy/io/ascii/rst.py
+16,16,1,473022786049291,473022970666945,0,0,False,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class SimpleRSTData(FixedWidthData):
+    start_line = 3
+    end_line = -1
+    splitter_class = FixedWidthTwoLineDataSplitter
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = SimpleRSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        lines = super().write(lines)
+        # For RST tables, we need to add the position line (with = characters) at the beginning and end
+        position_line = lines[1] if lines else """"
+        lines = [position_line] + lines + [position_line]
+        return lines
+EOL"
+17,17,1,473022970674730,473023156614190,0,0,False,"cat > /testbed/test_rst_header_rows.py << 'EOL'
+from astropy.table import QTable
+import astropy.units as u
+import sys
+
+tbl = QTable({'wave': [350,950]*u.nm, 'response': [0.7, 1.2]*u.count})
+
+# Test with default header_rows (just 'name')
+print(""\nTesting with default header_rows:"")
+tbl.write(sys.stdout, format=""ascii.rst"")
+
+# Test with header_rows=['name', 'unit']
+print(""\n\nTesting with header_rows=['name', 'unit']:"")
+tbl.write(sys.stdout, format=""ascii.rst"", header_rows=[""name"", ""unit""])
+EOL"
+18,18,1,473023156625241,473029340613321,0,0,True,python /testbed/test_rst_header_rows.py

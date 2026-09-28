@@ -1,0 +1,34 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,frozen_during,command
+0,1,1,472959893069892,472960227349171,1,1,False,"find . -type f -name ""*.py"" | grep -i separability"
+1,1,2,472960227368267,472960433483461,0,0,False,"find . -type f -name ""*.py"" | grep -i modeling"
+2,2,1,472960433500032,472960620445008,0,0,False,cat astropy/modeling/separable.py
+3,3,1,472960620462480,472960808972131,0,0,False,"cat << 'EOF' > test_separability.py
+from astropy.modeling import models as m
+from astropy.modeling.separable import separability_matrix
+
+# Test case 1: Simple compound model
+print(""Test 1: Simple compound model"")
+cm = m.Linear1D(10) & m.Linear1D(5)
+print(""cm = m.Linear1D(10) & m.Linear1D(5)"")
+print(separability_matrix(cm))
+
+# Test case 2: Complex compound model
+print(""\nTest 2: Complex compound model"")
+complex_cm = m.Pix2Sky_TAN() & m.Linear1D(10) & m.Linear1D(5)
+print(""m.Pix2Sky_TAN() & m.Linear1D(10) & m.Linear1D(5)"")
+print(separability_matrix(complex_cm))
+
+# Test case 3: Nested compound model (the problematic case)
+print(""\nTest 3: Nested compound model"")
+cm = m.Linear1D(10) & m.Linear1D(5)
+nested_cm = m.Pix2Sky_TAN() & cm
+print(""m.Pix2Sky_TAN() & (m.Linear1D(10) & m.Linear1D(5))"")
+print(separability_matrix(nested_cm))
+
+# Test case 4: Direct equivalent to test 3
+print(""\nTest 4: Direct equivalent"")
+direct_cm = m.Pix2Sky_TAN() & m.Linear1D(10) & m.Linear1D(5)
+print(""m.Pix2Sky_TAN() & m.Linear1D(10) & m.Linear1D(5)"")
+print(separability_matrix(direct_cm))
+EOF"
+4,4,1,472960808989374,472967450118168,0,0,True,python test_separability.py
