@@ -1,0 +1,22 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,frozen_during,command
+0,1,1,648979492547418,648979794312060,0,0,False,"find /testbed -type f -name ""connect.py"" | grep fits"
+1,1,2,648979794338279,648979988317306,0,0,False,"find /testbed -type f -name ""base.py"" | grep registry"
+2,1,3,648979988334448,648980180354673,0,0,False,"find /testbed -type f -name ""compat.py"" | grep registry"
+3,2,1,648980180429077,648980370156930,0,0,False,"grep -A 20 ""def is_fits"" /testbed/astropy/io/fits/connect.py"
+4,2,2,648980370167069,648980557400882,0,0,False,"grep -B 10 -A 10 ""def identify_format"" /testbed/astropy/io/registry/base.py"
+5,3,1,648980557414908,648980746870656,0,0,False,"cat /testbed/astropy/io/fits/connect.py | grep -A 30 ""def is_fits"""
+6,3,2,648980746878842,648980928047954,0,0,False,"cat /testbed/astropy/io/registry/base.py | grep -A 50 ""def identify_format"""
+7,4,1,648980928061299,648981114691792,0,0,False,"echo ""from astropy.io.registry import identify_format\nfrom astropy.table import Table\n\n# This should reproduce the IndexError\ntry:\n    result = identify_format(\""write\"", Table, \""bububu.ecsv\"", None, [], {})\n    print(f'Success: {result}')\nexcept Exception as e:\n    print(f'Error: {type(e).__name__}: {e}')\n"" > reproduce.py"
+8,5,1,648981114705127,648981345589757,1,1,False,cd /testbed && python reproduce.py
+9,6,1,648981345600286,648981537212883,0,0,False,"cat > /testbed/reproduce.py << 'EOL'
+from astropy.io.registry import identify_format
+from astropy.table import Table
+
+# This should reproduce the IndexError
+try:
+    result = identify_format(""write"", Table, ""bububu.ecsv"", None, [], {})
+    print(f'Success: {result}')
+except Exception as e:
+    print(f'Error: {type(e).__name__}: {e}')
+EOL"
+10,7,1,648981537219626,648986357439952,0,0,True,cd /testbed && python reproduce.py

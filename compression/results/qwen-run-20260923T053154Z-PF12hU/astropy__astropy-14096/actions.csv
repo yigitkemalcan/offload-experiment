@@ -1,0 +1,23 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,frozen_during,command
+0,2,1,648791340526878,648791602323581,0,0,False,ls -la
+1,3,1,648791602330805,648791817499100,0,0,False,"find astropy -type f -name ""*.py"" | grep -i coordinate"
+2,4,1,648791817505742,648791999114335,0,0,False,"grep -n ""__getattr__"" astropy/coordinates/sky_coordinate.py"
+3,5,1,648791999119053,648792185982980,0,0,False,"sed -n '865,875p' astropy/coordinates/sky_coordinate.py"
+4,6,1,648792185987339,648792366624402,0,0,False,"sed -n '869,900p' astropy/coordinates/sky_coordinate.py"
+5,7,1,648792366629171,648792591360807,1,1,False,"echo ""import astropy.coordinates as coord\n\nclass custom_coord(coord.SkyCoord):\n    @property\n    def prop(self):\n        return self.random_attr\n\nc = custom_coord('00h42m30s', '+41d12m00s', frame='icrs')\ntry:\n    c.prop\nexcept Exception as e:\n    print(f'Error: {type(e).__name__}: {e}')"" > reproduce.py && python reproduce.py"
+6,8,1,648792591365085,648797612130457,0,0,True,"cat > reproduce.py << 'EOL'
+import astropy.coordinates as coord
+
+class custom_coord(coord.SkyCoord):
+    @property
+    def prop(self):
+        return self.random_attr
+
+c = custom_coord('00h42m30s', '+41d12m00s', frame='icrs')
+try:
+    c.prop
+except Exception as e:
+    print(f'Error: {type(e).__name__}: {e}')
+EOL
+
+python reproduce.py"

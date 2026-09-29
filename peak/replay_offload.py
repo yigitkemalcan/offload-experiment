@@ -415,7 +415,8 @@ def docker(*args, **kw) -> subprocess.CompletedProcess:
     return subprocess.run(["docker", *args], capture_output=True, text=True, check=True, **kw)
 
 
-def run_trial(task: dict, out_dir: Path, args) -> dict:
+def run_trial(task: dict, out_dir: Path, args, measure=None) -> dict:
+    """measure(cg, cid, upper, roots, cache_before, sampler, rec, out_dir) runs while frozen (default: measure_offload)."""
     env = task["env"]
     name = f"offload-{task['task_id'].replace('__', '-').lower()[:40]}-{os.getpid()}"
     rec = {k: task[k] for k in ("task_id", "orig_exit_status", "orig_p_usage_bytes", "threshold_bytes")}
@@ -494,7 +495,7 @@ def run_trial(task: dict, out_dir: Path, args) -> dict:
         if triggered.is_set():
             rec["frozen_ok"] = cg.wait_frozen()
             rec["freeze_latency_s"] = (now() - rec["trigger_ns"]) / 1e9
-            measure_offload(cg, cid, upper, roots, cache_before, sampler, rec, out_dir)
+            (measure or measure_offload)(cg, cid, upper, roots, cache_before, sampler, rec, out_dir)
             cg.thaw()
             sampler.phase = "thawed"
             replayer.join(env["timeout"] + 30)  # let the frozen tool call finish: it must have survived
