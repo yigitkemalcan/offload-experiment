@@ -9,6 +9,7 @@ Reads results/<run>/compression.csv and writes plots/<run>/ (plots-net/<run>/ wi
 every run given, task indices continuing from one run to the next (the 100-task set of compression_experiment.py).
 results/ is written by root, so the plots go beside it rather than into it:
   compress_time.png, decompress_time.png  per-task time for the primary codec, task index on x
+  compress_time_lz4.png, decompress_time_lz4.png  additional per-task LZ4 timings
   codec_tradeoff.png                      median ratio against median time, one point per codec
   size_vs_time.png, size_vs_ratio.png     how image size drives time and ratio (fastest, primary, slowest)
 Sizes are the dense image (populated pages) in MiB and times are in ms, since container images are tens of
@@ -75,23 +76,25 @@ def make_figures(rows: list[dict], plots: Path, primary: str, net: bool) -> None
     codecs = sorted({r["codec"] for r in rows},
                     key=lambda c: median("dense_mib", c) / max(median("compress_ms", c), 1e-9), reverse=True)
 
-    # 1. Per-task scatter for the primary codec, task index on x.
-    for field, title, name in (
-        ("compress_ms", f"Time to compress a frozen container ({primary}){tag}", "compress_time.png"),
-        ("decompress_ms", f"Time to decompress a container ({primary}){tag}", "decompress_time.png"),
-    ):
-        subset = [r for r in rows if r["codec"] == primary]
+    # 1. Keep the primary-codec plots and always provide named LZ4 plots alongside them.
+    detailed = [(primary, ""), ("lz4", "_lz4")]
+    for codec, filename_suffix in detailed:
+        subset = [r for r in rows if r["codec"] == codec]
         if not subset:
             continue
-        fig, ax = figure(title, "Task index", "Milliseconds")
-        ax.scatter([r["index"] for r in subset], [r[field] for r in subset],
-                   s=26, color=PALETTE[0], edgecolor="none", alpha=0.85)
-        m = statistics.median(r[field] for r in subset)
-        ax.axhline(m, color=PALETTE[1], linewidth=1.5, linestyle="--")
-        ax.annotate(f"median {m:.1f} ms", (0, m), xytext=(4, 5), textcoords="offset points",
-                    color=INK_MUTED, fontsize=9)
-        ax.set_ylim(bottom=0)
-        save(fig, plots / name)
+        for field, title, name in (
+            ("compress_ms", f"Time to compress a frozen container ({codec}){tag}", "compress_time"),
+            ("decompress_ms", f"Time to decompress a container ({codec}){tag}", "decompress_time"),
+        ):
+            fig, ax = figure(title, "Task index", "Milliseconds")
+            ax.scatter([r["index"] for r in subset], [r[field] for r in subset],
+                       s=26, color=PALETTE[0], edgecolor="none", alpha=0.85)
+            m = statistics.median(r[field] for r in subset)
+            ax.axhline(m, color=PALETTE[1], linewidth=1.5, linestyle="--")
+            ax.annotate(f"median {m:.1f} ms", (0, m), xytext=(4, 5), textcoords="offset points",
+                        color=INK_MUTED, fontsize=9)
+            ax.set_ylim(bottom=0)
+            save(fig, plots / f"{name}{filename_suffix}.png")
 
     # 2. The design space: what each codec buys in capacity and costs in time.
     fig, ax = figure(f"Compression design space for container memory{tag}", "Compression ratio (median)",
@@ -129,7 +132,7 @@ def make_figures(rows: list[dict], plots: Path, primary: str, net: bool) -> None
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("runs", type=Path, nargs="*", help="results/<run> directories (default: all)")
-    ap.add_argument("--primary", default="zstd-3", help="codec for the per-task scatter plots")
+    ap.add_argument("--primary", default="zstd-3", help="codec for the main per-task scatter plots (named LZ4 plots are also generated)")
     ap.add_argument("--net", action="store_true", help="subtract the codec start-up time")
     args = ap.parse_args()
     runs = args.runs or sorted(p.parent for p in (ROOT / "results").glob("*/compression.csv"))
