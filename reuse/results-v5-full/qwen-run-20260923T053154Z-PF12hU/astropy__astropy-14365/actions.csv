@@ -1,0 +1,14 @@
+call_index,step,action,returncode,orig_returncode,command
+1,1,1,0,0.0,"find /testbed -type f -name ""*.py"" | grep -i qdp"
+2,2,1,0,0.0,cat /testbed/astropy/io/ascii/qdp.py
+3,3,1,0,0.0,grep -A 10 -B 10 '_command_re' /testbed/astropy/io/ascii/qdp.py
+4,4,1,1,1.0,"sed -i '/_type_re = rf""^\\s*((?P<command>{_command_re})|(?P<new>{_new_re})|(?P<data>{_data_re})?\\s*(\\!(?P<comment>.*))?\\s*$""/,+1c\\
+    _type_re = rf""^\\s*((?P<command>{_command_re})|(?P<new>{_new_re})|(?P<data>{_data_re})?\\s*(\\!(?P<comment>.*))?\\s*$""
+    _line_type_re = re.compile(_type_re, re.IGNORECASE)' /testbed/astropy/io/ascii/qdp.py"
+5,5,1,0,0.0,grep -n '_type_re' /testbed/astropy/io/ascii/qdp.py
+6,6,1,0,0.0,"sed -i '71s/_line_type_re = re.compile(_type_re)/_line_type_re = re.compile(_type_re, re.IGNORECASE)/' /testbed/astropy/io/ascii/qdp.py"
+7,7,1,0,0.0,grep -A 2 '_line_type_re' /testbed/astropy/io/ascii/qdp.py
+8,8,1,0,0.0,"echo -e 'read serr 1 2 \n1 0.5 1 0.5' > /testbed/test.qdp && python -c ""from astropy.table import Table; t = Table.read('/testbed/test.qdp', format='ascii.qdp'); print(t)"""
+9,9,1,0,0.0,git diff -- /testbed/astropy/io/ascii/qdp.py > patch.txt
+10,10,1,0,0.0,cat patch.txt
+11,13,1,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

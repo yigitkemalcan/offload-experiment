@@ -1,0 +1,287 @@
+call_index,step,action,returncode,orig_returncode,command
+1,1,1,0,0.0,"find /testbed -type f -name ""*.py"" | grep -i wcs"
+2,2,1,0,0.0,cat /testbed/astropy/wcs/wcsapi/sliced_low_level_wcs.py
+3,3,1,0,0.0,cat /testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py
+4,4,1,0,0.0,"cat > reproduce_issue.py << 'EOL'
+import numpy as np
+import astropy.wcs
+from astropy.coordinates import SkyCoord
+import astropy.units as u
+
+nx = 100
+ny = 25
+nz = 2
+wcs_header = {
+    'WCSAXES': 3,
+    'CRPIX1': (nx + 1)/2,
+    'CRPIX2': (ny + 1)/2,
+    'CRPIX3': 1.0,
+    'PC1_1': 0.0,
+    'PC1_2': -1.0,
+    'PC1_3': 0.0,
+    'PC2_1': 1.0,
+    'PC2_2': 0.0,
+    'PC2_3': -1.0,
+    'CDELT1': 5,
+    'CDELT2': 5,
+    'CDELT3': 0.055,
+    'CUNIT1': 'arcsec',
+    'CUNIT2': 'arcsec',
+    'CUNIT3': 'Angstrom',
+    'CTYPE1': 'HPLN-TAN',
+    'CTYPE2': 'HPLT-TAN',
+    'CTYPE3': 'WAVE',
+    'CRVAL1': 0.0,
+    'CRVAL2': 0.0,
+    'CRVAL3': 1.05,
+
+}
+fits_wcs = astropy.wcs.WCS(header=wcs_header)
+
+# Test world_to_pixel on unsliced WCS
+pt = SkyCoord(Tx=0*u.arcsec, Ty=0*u.arcsec, frame=astropy.wcs.utils.wcs_to_celestial_frame(fits_wcs))
+result_full = fits_wcs.world_to_pixel(pt, 1.05*u.angstrom)
+print(""Full WCS world_to_pixel:"", result_full)
+
+# Test world_to_pixel on sliced WCS
+ll_sliced_wcs = astropy.wcs.wcsapi.SlicedLowLevelWCS(fits_wcs, 0)
+hl_sliced_wcs = astropy.wcs.wcsapi.HighLevelWCSWrapper(ll_sliced_wcs)
+result_sliced = hl_sliced_wcs.world_to_pixel(pt)
+print(""Sliced WCS world_to_pixel:"", result_sliced)
+
+# Verify pixel_to_world works correctly
+px, py, pz = result_full
+world_full = fits_wcs.pixel_to_world(px, py, pz)
+print(""Full WCS pixel_to_world:"", world_full)
+
+world_sliced = hl_sliced_wcs.pixel_to_world(px, py)
+print(""Sliced WCS pixel_to_world:"", world_sliced)
+EOL"
+5,5,1,1,1.0,python reproduce_issue.py
+6,6,1,0,0.0,"cat > reproduce_issue.py << 'EOL'
+import numpy as np
+import astropy.wcs
+import astropy.units as u
+
+# Create a 3D WCS with the specified parameters
+nx = 100
+ny = 25
+nz = 2
+wcs_header = {
+    'WCSAXES': 3,
+    'CRPIX1': (nx + 1)/2,
+    'CRPIX2': (ny + 1)/2,
+    'CRPIX3': 1.0,
+    'PC1_1': 0.0,
+    'PC1_2': -1.0,
+    'PC1_3': 0.0,
+    'PC2_1': 1.0,
+    'PC2_2': 0.0,
+    'PC2_3': -1.0,
+    'CDELT1': 5,
+    'CDELT2': 5,
+    'CDELT3': 0.055,
+    'CUNIT1': 'arcsec',
+    'CUNIT2': 'arcsec',
+    'CUNIT3': 'Angstrom',
+    'CTYPE1': 'HPLN-TAN',
+    'CTYPE2': 'HPLT-TAN',
+    'CTYPE3': 'WAVE',
+    'CRVAL1': 0.0,
+    'CRVAL2': 0.0,
+    'CRVAL3': 1.05,
+}
+
+fits_wcs = astropy.wcs.WCS(header=wcs_header)
+
+# Create a sliced WCS (taking the first slice in wavelength)
+ll_sliced_wcs = astropy.wcs.wcsapi.SlicedLowLevelWCS(fits_wcs, 0)
+
+# Test world_to_pixel on the full WCS with values at CRVAL
+world_coords_full = [0.0, 0.0, 1.05]  # Corresponds to CRVAL values
+pixel_full = fits_wcs.world_to_pixel_values(*world_coords_full)
+print(""Full WCS world_to_pixel:"", pixel_full)
+
+# Test world_to_pixel on the sliced WCS with just the spatial coordinates
+world_coords_sliced = [0.0, 0.0]  # Just the spatial coordinates
+pixel_sliced = ll_sliced_wcs.world_to_pixel_values(*world_coords_sliced)
+print(""Sliced WCS world_to_pixel:"", pixel_sliced)
+
+# Verify pixel_to_world works correctly
+world_back_full = fits_wcs.pixel_to_world_values(*pixel_full)
+print(""Full WCS pixel_to_world:"", world_back_full)
+
+world_back_sliced = ll_sliced_wcs.pixel_to_world_values(*pixel_sliced)
+print(""Sliced WCS pixel_to_world:"", world_back_sliced)
+EOL"
+7,7,1,0,0.0,python reproduce_issue.py
+8,8,1,1,1.0,"cp /testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py /testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py.bak && sed -i '/world_arrays_new = \[\]/,/world_arrays_new.append(1\.)/c\\
+        world_arrays_new = []
+        iworld_curr = -1
+        for iworld in range(self._wcs.world_n_dim):
+            if iworld in self._world_keep:
+                iworld_curr += 1
+                world_arrays_new.append(world_arrays[iworld_curr])
+            else:
+                # Use the reference value (CRVAL equivalent) for dropped dimensions
+                if hasattr(self._wcs, ""_wcs"") and hasattr(self._wcs._wcs, ""wcs""):
+                    # Handle FITSWCS case
+                    crval = self._wcs._wcs.wcs.crval[iworld]
+                elif hasattr(self._wcs, ""wcs""):
+                    # Handle other WCS types with crval
+                    crval = self._wcs.wcs.crval[iworld]
+                else:
+                    # Default fallback
+                    crval = self._wcs.pixel_to_world_values(*([0] * self._wcs.pixel_n_dim))[iworld]
+                world_arrays_new.append(crval)' /testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py"
+9,9,1,2,2.0,"python -c ""
+import re
+
+# Read the file
+with open('/testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py', 'r') as file:
+    content = file.read()
+
+# Find the world_to_pixel_values method and replace the section
+pattern = r'(def world_to_pixel_values\s*\(self, \*world_arrays\):.*?world_arrays = tuple\(map\(np.asanyarray, world_arrays\)\))\s*world_arrays_new = \[\]\s*iworld_curr = -1\s*for iworld in range\(self._wcs.world_n_dim\):\s*if iworld in self._world_keep:\s*iworld_curr \+= 1\s*world_arrays_new\.append\(world_arrays\[iworld_curr\]\)\s*else:\s*world_arrays_new\.append\(1\.\)'
+
+replacement = r""""""\1
+        world_arrays_new = []
+        iworld_curr = -1
+        for iworld in range(self._wcs.world_n_dim):
+            if iworld in self._world_keep:
+                iworld_curr += 1
+                world_arrays_new.append(world_arrays[iworld_curr])
+            else:
+                # Use the reference value (CRVAL equivalent) for dropped dimensions
+                if hasattr(self._wcs, '_wcs') and hasattr(self._wcs._wcs, 'wcs'):
+                    # Handle FITSWCS case
+                    crval = self._wcs._wcs.wcs.crval[iworld]
+                elif hasattr(self._wcs, 'wcs'):
+                    # Handle other WCS types with crval
+                    crval = self._wcs.wcs.crval[iworld]
+                else:
+                    # Default fallback
+                    crval = self._wcs.pixel_to_world_values(*([0] * self._wcs.pixel_n_dim))[iworld]
+                world_arrays_new.append(crval)""""""
+
+# Replace the pattern
+new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+
+# Write the file back
+with open('/testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py', 'w') as file:
+    file.write(new_content)
+"""
+10,10,1,2,2.0,"python -c ""
+import re
+
+# Read the file
+with open('/testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py', 'r') as file:
+    content = file.read()
+
+# Find the world_to_pixel_values method and replace the section
+pattern = r'(def world_to_pixel_values\s*\(self, \\*world_arrays\):.*?world_arrays = tuple\(map\(np.asanyarray, world_arrays\)\))\s*world_arrays_new = \\[]\s*iworld_curr = -1\s*for iworld in range\(self._\\_wcs.world_n_dim\):\s*if iworld in self._\\_world_keep:\s*iworld_curr \\+= 1\s*world_arrays_new\\.append\(world_arrays\[iworld_curr\]\)\s*else:\s*world_arrays_new\\.append\(1\\.\)'
+
+replacement = r""""""\1
+        world_arrays_new = []
+        iworld_curr = -1
+        for iworld in range(self._wcs.world_n_dim):
+            if iworld in self._world_keep:
+                iworld_curr += 1
+                world_arrays_new.append(world_arrays[iworld_curr])
+            else:
+                # Use the reference value (CRVAL equivalent) for dropped dimensions
+                if hasattr(self._wcs, '_wcs') and hasattr(self._wcs._wcs, 'wcs'):
+                    # Handle FITSWCS case
+                    crval = self._wcs._wcs.wcs.crval[iworld]
+                elif hasattr(self._wcs, 'wcs'):
+                    # Handle other WCS types with crval
+                    crval = self._wcs.wcs.crval[iworld]
+                else:
+                    # Default fallback
+                    crval = self._wcs.pixel_to_world_values(*([0] * self._wcs.pixel_n_dim))[iworld]
+                world_arrays_new.append(crval)""""""
+
+# Replace the pattern
+new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+
+# Write the file back
+with open('/testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py', 'w') as file:
+    file.write(new_content)
+"""
+11,11,1,0,0.0,"cat > modify_sliced_wcs.py << 'EOL'
+import re
+
+# Read the file
+with open('/testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py', 'r') as file:
+    content = file.read()
+
+# Find the world_to_pixel_values method and replace the section
+pattern = r'(def world_to_pixel_values\s*\(self, \\*world_arrays\):.*?world_arrays = tuple\(map\(np.asanyarray, world_arrays\)\))\s*world_arrays_new = \\[]\s*iworld_curr = -1\s*for iworld in range\(self._\\_wcs.world_n_dim\):\s*if iworld in self._\\_world_keep:\s*iworld_curr \\+= 1\s*world_arrays_new\\.append\(world_arrays\[iworld_curr\]\)\s*else:\s*world_arrays_new\\.append\(1\\.\)'
+
+replacement = r""""""\1
+        world_arrays_new = []
+        iworld_curr = -1
+        for iworld in range(self._wcs.world_n_dim):
+            if iworld in self._world_keep:
+                iworld_curr += 1
+                world_arrays_new.append(world_arrays[iworld_curr])
+            else:
+                # Use the reference value (CRVAL equivalent) for dropped dimensions
+                if hasattr(self._wcs, '_wcs') and hasattr(self._wcs._wcs, 'wcs'):
+                    # Handle FITSWCS case
+                    crval = self._wcs._wcs.wcs.crval[iworld]
+                elif hasattr(self._wcs, 'wcs'):
+                    # Handle other WCS types with crval
+                    crval = self._wcs.wcs.crval[iworld]
+                else:
+                    # Default fallback
+                    crval = self._wcs.pixel_to_world_values(*([0] * self._wcs.pixel_n_dim))[iworld]
+                world_arrays_new.append(crval)""""""
+
+# Replace the pattern
+new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+
+# Write the file back
+with open('/testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py', 'w') as file:
+    file.write(new_content)
+EOL"
+12,12,1,1,1.0,python modify_sliced_wcs.py
+13,13,1,0,0.0,"grep -A 20 ""def world_to_pixel_values"" /testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py"
+14,14,1,0,0.0,"cat > modify_sliced_wcs.py << 'EOL'
+# Read the file
+with open('/testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py', 'r') as file:
+    lines = file.readlines()
+
+# Find the world_to_pixel_values method and modify the specific lines
+with open('/testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py', 'w') as file:
+    for line in lines:
+        if 'world_arrays_new.append(1.)' in line:
+            # Replace the line with our improved version
+            indent = ' ' * (len(line) - len(line.lstrip()))
+            file.write(indent + ""# Use the reference value (CRVAL equivalent) for dropped dimensions\n"")
+            file.write(indent + ""if hasattr(self._wcs, '_wcs') and hasattr(self._wcs._wcs, 'wcs'):\n"")
+            file.write(indent + ""    # Handle FITSWCS case\n"")
+            file.write(indent + ""    crval = self._wcs._wcs.wcs.crval[iworld]\n"")
+            file.write(indent + ""elif hasattr(self._wcs, 'wcs'):\n"")
+            file.write(indent + ""    # Handle other WCS types with crval\n"")
+            file.write(indent + ""    crval = self._wcs.wcs.crval[iworld]\n"")
+            file.write(indent + ""else:\n"")
+            file.write(indent + ""    # Default fallback\n"")
+            file.write(indent + ""    crval = self._wcs.pixel_to_world_values(*([0] * self._wcs.pixel_n_dim))[iworld]\n"")
+            file.write(indent + ""world_arrays_new.append(crval)\n"")
+        elif 'world_arrays_new.append(world_arrays[iworld_curr])' in line or 'world_arrays_new = []' in line or 'iworld_curr = -1' in line or 'for iworld in range(self._wcs.world_n_dim):' in line or 'if iworld in self._world_keep:' in line or 'iworld_curr += 1' in line:
+            # Keep these lines as they are
+            file.write(line)
+        elif 'else:' in line and 'world_arrays_new.append(1.)' in ''.join(lines[lines.index(line)+1:lines.index(line)+3]):
+            # Keep the else: line but we'll handle the content in the next iteration
+            file.write(line)
+        else:
+            # Write all other lines unchanged
+            file.write(line)
+EOL"
+15,15,1,0,0.0,python modify_sliced_wcs.py
+16,16,1,0,0.0,"grep -A 15 ""def world_to_pixel_values"" /testbed/astropy/wcs/wcsapi/wrappers/sliced_wcs.py"
+17,17,1,0,0.0,python reproduce_issue.py
+18,18,1,0,0.0,git diff -- astropy/wcs/wcsapi/wrappers/sliced_wcs.py > patch.txt
+19,19,1,0,0.0,cat patch.txt
+20,20,1,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

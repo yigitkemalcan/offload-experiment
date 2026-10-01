@@ -1,0 +1,35 @@
+call_index,step,action,returncode,orig_returncode,command
+1,1,1,0,0.0,"find . -type f -name ""operations.py"" | grep -i mysql"
+2,2,1,0,0.0,"cat ./django/db/backends/mysql/operations.py | grep -n ""UTC"" -A 5 -B 5"
+3,3,1,1,1.0,"cat ./django/db/backends/mysql/operations.py | grep -n ""TIME_ZONE"" -A 10 -B 10"
+4,4,1,0,0.0,cat ./django/db/backends/mysql/operations.py
+5,5,1,0,0.0,"find . -type f -name ""base.py"" | grep -i db"
+6,6,1,1,1.0,"cat ./django/db/backends/mysql/base.py | grep -A 10 -B 10 ""timezone"""
+7,7,1,0,0.0,cat ./django/db/backends/mysql/base.py
+8,8,1,1,1.0,"grep -n ""timezone"" ./django/db/backends/mysql/base.py"
+9,9,1,0,0.0,"cat ./django/db/backends/base/base.py | grep -A 10 -B 10 ""timezone"""
+10,10,1,0,0.0,"grep -r ""timezone"" ./django/db/backends/mysql/ --include=""*.py"" | grep -v ""base.py"""
+11,11,1,0,0.0,cat ./django/db/backends/mysql/features.py
+12,12,1,0,0.0,"cp ./django/db/backends/mysql/operations.py ./django/db/backends/mysql/operations.py.bak && sed -i 's/field_name = ""CONVERT_TZ(%s, \""UTC\"", \""%s\"")"" % (field_name, tzname)/field_name = ""CONVERT_TZ(%s, \""%s\"", \""%s\"")"" % (field_name, self.connection.timezone_name, tzname)/' ./django/db/backends/mysql/operations.py"
+13,13,1,0,0.0,diff ./django/db/backends/mysql/operations.py.bak ./django/db/backends/mysql/operations.py
+14,14,1,0,0.0,"grep -A 5 -B 5 ""_convert_field_to_tz"" ./django/db/backends/mysql/operations.py"
+15,15,1,0,0.0,"cat > ./django/db/backends/mysql/operations.py.patch << 'EOL'
+diff --git a/django/db/backends/mysql/operations.py b/django/db/backends/mysql/operations.py
+index 1234567..89abcde 100644
+--- a/django/db/backends/mysql/operations.py
++++ b/django/db/backends/mysql/operations.py
+@@ -70,7 +70,7 @@ class DatabaseOperations(BaseDatabaseOperations):
+ 
+     def _convert_field_to_tz(self, field_name, tzname):
+         if settings.USE_TZ:
+-            field_name = ""CONVERT_TZ(%s, 'UTC', '%s')"" % (field_name, tzname)
++            field_name = ""CONVERT_TZ(%s, '%s', '%s')"" % (field_name, self.connection.timezone_name, tzname)
+         return field_name
+ 
+     def datetime_cast_date_sql(self, field_name, tzname):
+EOL"
+16,16,1,0,0.0,"sed -i ""s/field_name = \""CONVERT_TZ(%s, 'UTC', '%s')\"" % (field_name, tzname)/field_name = \""CONVERT_TZ(%s, '%s', '%s')\"" % (field_name, self.connection.timezone_name, tzname)/"" ./django/db/backends/mysql/operations.py"
+17,17,1,0,0.0,"grep -A 2 ""_convert_field_to_tz"" ./django/db/backends/mysql/operations.py"
+18,18,1,0,0.0,git diff -- django/db/backends/mysql/operations.py > patch.txt
+19,19,1,0,0.0,cat patch.txt
+20,20,1,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

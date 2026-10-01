@@ -1,0 +1,1850 @@
+call_index,step,action,returncode,orig_returncode,command
+1,1,1,0,0.0,"find /testbed -type f -name ""*.py"" | grep -i ascii | grep -i rst"
+2,1,2,0,0.0,"find /testbed -type f -name ""*.py"" | grep -i ascii"
+3,2,1,0,0.0,cat /testbed/astropy/io/ascii/rst.py
+4,3,1,0,0.0,cat /testbed/astropy/io/ascii/fixedwidth.py
+5,4,1,0,0.0,"grep -A 20 -B 20 ""header_rows"" /testbed/astropy/io/ascii/core.py | head -100"
+6,5,1,1,1.0,"grep -n ""header_rows"" /testbed/astropy/io/ascii/core.py"
+7,6,1,1,1.0,"grep -n -i ""header.*rows"" /testbed/astropy/io/ascii/core.py || grep -n -i ""rows.*header"" /testbed/astropy/io/ascii/core.py"
+8,7,1,0,0.0,"grep -n ""class.*Writer"" /testbed/astropy/io/ascii/core.py"
+9,8,1,0,0.0,"sed -n '50,100p' /testbed/astropy/io/ascii/core.py"
+10,9,1,0,0.0,"grep -n ""class FixedWidth"" /testbed/astropy/io/ascii/fixedwidth.py"
+11,10,1,0,0.0,"sed -n '306,360p' /testbed/astropy/io/ascii/fixedwidth.py"
+12,11,1,0,0.0,"sed -n '65,100p' /testbed/astropy/io/ascii/fixedwidth.py"
+13,12,1,0,0.0,"sed -n '85,120p' /testbed/astropy/io/ascii/fixedwidth.py"
+14,13,1,0,0.0,"grep -A 20 ""class FixedWidthData"" /testbed/astropy/io/ascii/fixedwidth.py"
+15,14,1,0,0.0,"sed -n '252,300p' /testbed/astropy/io/ascii/fixedwidth.py"
+16,15,1,0,0.0,cat /testbed/astropy/io/ascii/rst.py
+17,16,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class SimpleRSTData(FixedWidthData):
+    start_line = 3
+    end_line = -1
+    splitter_class = FixedWidthTwoLineDataSplitter
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = SimpleRSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        lines = super().write(lines)
+        # For RST tables, we need to add the position line (with = characters) at the beginning and end
+        position_line = lines[1] if lines else """"
+        lines = [position_line] + lines + [position_line]
+        return lines
+EOL"
+18,17,1,0,0.0,"cat > /testbed/test_rst_header_rows.py << 'EOL'
+from astropy.table import QTable
+import astropy.units as u
+import sys
+
+tbl = QTable({'wave': [350,950]*u.nm, 'response': [0.7, 1.2]*u.count})
+
+# Test with default header_rows (just 'name')
+print(""\nTesting with default header_rows:"")
+tbl.write(sys.stdout, format=""ascii.rst"")
+
+# Test with header_rows=['name', 'unit']
+print(""\n\nTesting with header_rows=['name', 'unit']:"")
+tbl.write(sys.stdout, format=""ascii.rst"", header_rows=[""name"", ""unit""])
+EOL"
+19,18,1,0,0.0,python /testbed/test_rst_header_rows.py
+20,19,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class SimpleRSTData(FixedWidthData):
+    start_line = 3
+    end_line = -1
+    splitter_class = FixedWidthTwoLineDataSplitter
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = SimpleRSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        lines = super().write(lines)
+        
+        # For RST tables, we need to add the position line (with = characters) at the beginning and end
+        # But we need to be careful about where to insert it based on the header rows
+        if not lines:
+            return lines
+            
+        # Find the position line (the one with = characters)
+        position_line = None
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                position_line = line
+                break
+                
+        if position_line is None:
+            # If no position line was found, create one based on the first data line
+            if len(lines) > 0:
+                first_line = lines[0]
+                position_line = ''.join('=' if c != ' ' else ' ' for c in first_line)
+            else:
+                return lines
+
+        # Insert the position line at the beginning and end
+        lines = [position_line] + lines + [position_line]
+        return lines
+EOL"
+21,20,1,0,0.0,python /testbed/test_rst_header_rows.py
+22,21,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class SimpleRSTData(FixedWidthData):
+    start_line = 3
+    end_line = -1
+    splitter_class = FixedWidthTwoLineDataSplitter
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = SimpleRSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        lines = super().write(lines)
+        
+        # For RST tables, we need to add the position line (with = characters) at the beginning and end
+        # But we need to be careful about where to insert it based on the header rows
+        if not lines:
+            return lines
+            
+        # Find the position line (the one with = characters)
+        position_line = None
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                position_line = line
+                break
+                
+        if position_line is None:
+            # If no position line was found, create one based on the first data line
+            if len(lines) > 0:
+                first_line = lines[0]
+                # Create a position line with = characters under each non-space character
+                position_line = ''.join('=' if c != ' ' else ' ' for c in first_line)
+            else:
+                return lines
+
+        # Replace any existing position lines with a consistent one
+        # First, find the maximum width of each column from all lines
+        if lines:
+            # Get the widths from the position line
+            widths = []
+            i = 0
+            while i < len(position_line):
+                if position_line[i] == '=':
+                    start = i
+                    while i < len(position_line) and position_line[i] == '=':
+                        i += 1
+                    widths.append(i - start)
+                else:
+                    i += 1
+            
+            # Create a new position line with the correct widths
+            parts = []
+            pos = 0
+            for width in widths:
+                parts.append('=' * width)
+                pos += width
+                # Add spaces to maintain position
+                while pos < len(position_line) and position_line[pos] == ' ':
+                    parts.append(' ')
+                    pos += 1
+            position_line = ''.join(parts)
+
+        # Remove any existing position lines
+        filtered_lines = [line for line in lines if not (line.strip() and all(c == '=' for c in line.strip()))]
+        
+        # Insert the position line at the beginning, after the header rows, and at the end
+        result_lines = [position_line]
+        result_lines.extend(filtered_lines)
+        result_lines.append(position_line)
+        
+        return result_lines
+EOL"
+23,22,1,0,0.0,python /testbed/test_rst_header_rows.py
+24,23,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class SimpleRSTData(FixedWidthData):
+    start_line = 3
+    end_line = -1
+    splitter_class = FixedWidthTwoLineDataSplitter
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = SimpleRSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        lines = super().write(lines)
+        
+        # For RST tables, we need to add the position line (with = characters) at the beginning, after the header, and at the end
+        if not lines:
+            return lines
+            
+        # Find the header rows and data rows
+        header_rows = []
+        data_rows = []
+        found_position_line = False
+        
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                found_position_line = True
+            elif found_position_line:
+                data_rows.append(line)
+            else:
+                header_rows.append(line)
+                
+        # If we didn't find a position line, create one based on the header rows
+        if not found_position_line and header_rows:
+            # Get the maximum width of each column from the header rows
+            if header_rows:
+                # Split the header rows into columns by whitespace
+                # We need to determine column boundaries
+                first_header = header_rows[0]
+                # Find column boundaries by looking for sequences of non-whitespace
+                col_bounds = []
+                i = 0
+                while i < len(first_header):
+                    if first_header[i] != ' ':
+                        start = i
+                        while i < len(first_header) and first_header[i] != ' ':
+                            i += 1
+                        col_bounds.append((start, i))
+                    else:
+                        i += 1
+                
+                # Create a position line with = characters for each column
+                position_line = [' '] * len(first_header)
+                for start, end in col_bounds:
+                    for j in range(start, end):
+                        position_line[j] = '='
+                position_line = ''.join(position_line)
+            else:
+                position_line = ''
+        else:
+            # Use the position line we found
+            position_line = None
+            for line in lines:
+                if line.strip() and all(c == '=' for c in line.strip()):
+                    position_line = line
+                    break
+
+        # Create the final table
+        result_lines = []
+        if header_rows:
+            result_lines.extend(header_rows)
+            result_lines.append(position_line)
+            
+        result_lines.extend(data_rows)
+        
+        # Add the final position line
+        if position_line:
+            result_lines.append(position_line)
+            
+        return result_lines
+EOL"
+25,24,1,0,0.0,python /testbed/test_rst_header_rows.py
+26,25,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class SimpleRSTData(FixedWidthData):
+    start_line = 3
+    end_line = -1
+    splitter_class = FixedWidthTwoLineDataSplitter
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = SimpleRSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        lines = super().write(lines)
+        
+        # For RST tables, we need to add the position line (with = characters) at the beginning and end
+        # But we need to preserve the position line that might have been generated by the header
+        if not lines:
+            return lines
+            
+        # Find the position line (the one with = characters)
+        position_line = None
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                position_line = line
+                break
+                
+        if position_line is None:
+            # If no position line was found, return the lines as is
+            return lines
+
+        # Create the final table with the position line at the beginning and end
+        result_lines = [position_line]  # Start with position line
+        in_header = True
+        
+        for line in lines:
+            if line == position_line:
+                # This is the position line after the header
+                result_lines.append(line)  # Add it to the output
+                in_header = False
+            elif in_header:
+                # This is a header line
+                result_lines.append(line)
+            else:
+                # This is a data line
+                result_lines.append(line)
+                
+        # Add the final position line
+        result_lines.append(position_line)
+        
+        return result_lines
+EOL"
+27,26,1,0,0.0,python /testbed/test_rst_header_rows.py
+28,27,1,0,0.0,"grep -A 50 ""def write"" /testbed/astropy/io/ascii/fixedwidth.py | grep -B 50 ""class"""
+29,28,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class SimpleRSTData(FixedWidthData):
+    start_line = 3
+    end_line = -1
+    splitter_class = FixedWidthTwoLineDataSplitter
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = SimpleRSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        # This will include the header rows and the position line after the headers
+        lines = super().write(lines)
+        
+        # For RST tables, we need the position line (with = characters) at the beginning and end
+        # Find the position line (the one with = characters)
+        position_line = None
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                position_line = line
+                break
+                
+        if position_line is None or not lines:
+            return lines
+
+        # Create the final table with the position line at the beginning and end
+        result_lines = [position_line]  # Start with position line
+        result_lines.extend(lines)  # Add all the lines from the parent write method
+        result_lines.append(position_line)  # End with position line
+        
+        return result_lines
+EOL"
+30,29,1,0,0.0,python /testbed/test_rst_header_rows.py
+31,30,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class SimpleRSTData(FixedWidthData):
+    start_line = 3
+    end_line = -1
+    splitter_class = FixedWidthTwoLineDataSplitter
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = SimpleRSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        original_lines = lines.copy() if lines else []
+        lines = super().write(lines)
+        
+        # Debug: print the lines from the parent write method
+        # For RST tables, we need the position line (with = characters) at the beginning and end
+        position_line = None
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                position_line = line
+                break
+                
+        if position_line is None or not lines:
+            return lines
+
+        # Create the final table with the position line at the beginning and end
+        result_lines = [position_line]  # Start with position line
+        result_lines.extend(lines)  # Add all the lines from the parent write method
+        result_lines.append(position_line)  # End with position line
+        
+        return result_lines
+EOL"
+32,31,1,0,0.0,"cat > /testbed/test_rst_header_rows.py << 'EOL'
+from astropy.table import QTable
+import astropy.units as u
+import sys
+import io
+
+tbl = QTable({'wave': [350,950]*u.nm, 'response': [0.7, 1.2]*u.count})
+
+# Test with default header_rows (just 'name')
+print(""\nTesting with default header_rows:"")
+output = io.StringIO()
+tbl.write(output, format=""ascii.rst"")
+print(output.getvalue())
+
+# Test with header_rows=['name', 'unit']
+print(""\n\nTesting with header_rows=['name', 'unit']:"")
+output = io.StringIO()
+tbl.write(output, format=""ascii.rst"", header_rows=[""name"", ""unit""])
+print(output.getvalue())
+EOL"
+33,32,1,0,0.0,python /testbed/test_rst_header_rows.py
+34,33,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = FixedWidthData  # Use the standard FixedWidthData class for writing
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        lines = super().write(lines)
+        
+        # For RST tables, we need the position line (with = characters) at the beginning and end
+        # Find the position line (the one with = characters)
+        position_line = None
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                position_line = line
+                break
+                
+        if position_line is None or not lines:
+            return lines
+
+        # Create the final table with the position line at the beginning and end
+        result_lines = [position_line]  # Start with position line
+        result_lines.extend(lines)  # Add all the lines from the parent write method
+        result_lines.append(position_line)  # End with position line
+        
+        return result_lines
+EOL"
+35,34,1,0,0.0,python /testbed/test_rst_header_rows.py
+36,35,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class RSTData(FixedWidthData):
+    """"""Data class for RST format that uses proper spacing without delimiters.""""""
+    def write(self, lines):
+        # Get the header rows from the parent class
+        default_header_rows = [] if self.header.start_line is None else [""name""]
+        header_rows = getattr(self, ""header_rows"", default_header_rows)
+        
+        # First part is getting the widths of each column.
+        # List (rows) of list (column values) for data lines
+        vals_list = []
+        col_str_iters = self.str_vals()
+        for vals in zip(*col_str_iters):
+            vals_list.append(vals)
+
+        # List (rows) of list (columns values) for header lines.
+        hdrs_list = []
+        for col_attr in header_rows:
+            vals = [
+                """" if (val := getattr(col.info, col_attr)) is None else str(val)
+                for col in self.cols
+            ]
+            hdrs_list.append(vals)
+
+        # Widths for data columns
+        widths = [
+            max(len(vals[i_col]) for vals in vals_list)
+            for i_col in range(len(self.cols))
+        ]
+        # Incorporate widths for header columns (if there are any)
+        if hdrs_list:
+            for i_col in range(len(self.cols)):
+                widths[i_col] = max(
+                    widths[i_col], max(len(vals[i_col]) for vals in hdrs_list)
+                )
+
+        # Now collect formatted header and data lines into the output lines
+        for vals in hdrs_list:
+            # Format with proper spacing but no delimiters
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        if self.header.position_line is not None:
+            vals = [self.header.position_char * width for width in widths]
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        for vals in vals_list:
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        return lines
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = RSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        lines = super().write(lines)
+        
+        # For RST tables, we need the position line (with = characters) at the beginning and end
+        # Find the position line (the one with = characters)
+        position_line = None
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                position_line = line
+                break
+                
+        if position_line is None or not lines:
+            return lines
+
+        # Create the final table with the position line at the beginning and end
+        result_lines = [position_line]  # Start with position line
+        result_lines.extend(lines)  # Add all the lines from the parent write method
+        result_lines.append(position_line)  # End with position line
+        
+        return result_lines
+EOL"
+37,36,1,0,0.0,python /testbed/test_rst_header_rows.py
+38,37,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class RSTData(FixedWidthData):
+    """"""Data class for RST format that uses proper spacing without delimiters.""""""
+    def write(self, lines):
+        # Get the header rows from the parent class
+        default_header_rows = [] if self.header.start_line is None else [""name""]
+        header_rows = getattr(self, ""header_rows"", default_header_rows)
+        
+        # First part is getting the widths of each column.
+        # List (rows) of list (column values) for data lines
+        vals_list = []
+        col_str_iters = self.str_vals()
+        for vals in zip(*col_str_iters):
+            vals_list.append(vals)
+
+        # List (rows) of list (columns values) for header lines.
+        hdrs_list = []
+        for col_attr in header_rows:
+            vals = [
+                """" if (val := getattr(col.info, col_attr)) is None else str(val)
+                for col in self.cols
+            ]
+            hdrs_list.append(vals)
+
+        # Widths for data columns
+        widths = [
+            max(len(vals[i_col]) for vals in vals_list)
+            for i_col in range(len(self.cols))
+        ]
+        # Incorporate widths for header columns (if there are any)
+        if hdrs_list:
+            for i_col in range(len(self.cols)):
+                widths[i_col] = max(
+                    widths[i_col], max(len(vals[i_col]) for vals in hdrs_list)
+                )
+
+        # Now collect formatted header and data lines into the output lines
+        for vals in hdrs_list:
+            # Format with proper spacing but no delimiters
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        if self.header.position_line is not None:
+            vals = [self.header.position_char * width for width in widths]
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        for vals in vals_list:
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        return lines
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = RSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        lines = super().write(lines)
+        
+        # For RST tables, we need the position line (with = characters) at the beginning and end
+        # Find the position line (the one with = characters)
+        position_line = None
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                position_line = line
+                break
+                
+        if position_line is None or not lines:
+            return lines
+
+        # Create the final table with the position line at the beginning and end
+        result_lines = [position_line]  # Start with position line
+        result_lines.extend(lines)  # Add all the lines from the parent write method
+        result_lines.append(position_line)  # End with position line
+        
+        return result_lines
+EOL"
+39,38,1,0,0.0,python /testbed/test_rst_header_rows.py
+40,39,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class RSTData(FixedWidthData):
+    """"""Data class for RST format that uses proper spacing without delimiters.""""""
+    def write(self, lines):
+        # Get the header rows from the parent class
+        default_header_rows = [] if self.header.start_line is None else [""name""]
+        header_rows = getattr(self, ""header_rows"", default_header_rows)
+        
+        # First part is getting the widths of each column.
+        # List (rows) of list (column values) for data lines
+        vals_list = []
+        col_str_iters = self.str_vals()
+        for vals in zip(*col_str_iters):
+            vals_list.append(vals)
+
+        # List (rows) of list (columns values) for header lines.
+        hdrs_list = []
+        for col_attr in header_rows:
+            vals = [
+                """" if (val := getattr(col.info, col_attr)) is None else str(val)
+                for col in self.cols
+            ]
+            hdrs_list.append(vals)
+
+        # Widths for data columns
+        widths = [
+            max(len(vals[i_col]) for vals in vals_list)
+            for i_col in range(len(self.cols))
+        ]
+        # Incorporate widths for header columns (if there are any)
+        if hdrs_list:
+            for i_col in range(len(self.cols)):
+                widths[i_col] = max(
+                    widths[i_col], max(len(vals[i_col]) for vals in hdrs_list)
+                )
+
+        # Now collect formatted header and data lines into the output lines
+        for vals in hdrs_list:
+            # Format with proper spacing but no delimiters
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        if self.header.position_line is not None:
+            vals = [self.header.position_char * width for width in widths]
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        for vals in vals_list:
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        return lines
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = RSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        original_len = len(lines) if lines else 0
+        lines = super().write(lines)
+        
+        # Debug: print the lines from the parent write method
+        print(""Lines after super().write():"")
+        for i, line in enumerate(lines):
+            print(f""{i}: '{line}'"")
+        
+        # For RST tables, we need the position line (with = characters) at the beginning and end
+        # Find the position line (the one with = characters)
+        position_line = None
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                position_line = line
+                break
+                
+        if position_line is None or not lines:
+            return lines
+
+        # Create the final table with the position line at the beginning and end
+        result_lines = [position_line]  # Start with position line
+        result_lines.extend(lines)  # Add all the lines from the parent write method
+        result_lines.append(position_line)  # End with position line
+        
+        print(""Final result_lines:"")
+        for i, line in enumerate(result_lines):
+            print(f""{i}: '{line}'"")
+        
+        return result_lines
+EOL"
+41,40,1,0,0.0,python /testbed/test_rst_header_rows.py
+42,41,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class RSTData(FixedWidthData):
+    """"""Data class for RST format that uses proper spacing without delimiters.""""""
+    def write(self, lines):
+        # Get the header rows from the parent class
+        default_header_rows = [] if self.header.start_line is None else [""name""]
+        header_rows = getattr(self, ""header_rows"", default_header_rows)
+        
+        # First part is getting the widths of each column.
+        # List (rows) of list (column values) for data lines
+        vals_list = []
+        col_str_iters = self.str_vals()
+        for vals in zip(*col_str_iters):
+            vals_list.append(vals)
+
+        # List (rows) of list (columns values) for header lines.
+        hdrs_list = []
+        for col_attr in header_rows:
+            vals = [
+                """" if (val := getattr(col.info, col_attr)) is None else str(val)
+                for col in self.cols
+            ]
+            hdrs_list.append(vals)
+
+        # Widths for data columns
+        widths = [
+            max(len(vals[i_col]) for vals in vals_list)
+            for i_col in range(len(self.cols))
+        ]
+        # Incorporate widths for header columns (if there are any)
+        if hdrs_list:
+            for i_col in range(len(self.cols)):
+                widths[i_col] = max(
+                    widths[i_col], max(len(vals[i_col]) for vals in hdrs_list)
+                )
+
+        # Now collect formatted header and data lines into the output lines
+        for vals in hdrs_list:
+            # Format with proper spacing but no delimiters
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        if self.header.position_line is not None:
+            vals = [self.header.position_char * width for width in widths]
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        for vals in vals_list:
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        return lines
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = RSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        lines = super().write(lines)
+        
+        # For RST tables, we need the position line (with = characters) at the beginning and end
+        # Find the position line (the one with = characters)
+        position_line = None
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                position_line = line
+                break
+                
+        if position_line is None or not lines:
+            return lines
+
+        # Create the final table with the position line at the beginning and end
+        result_lines = [position_line]  # Start with position line
+        result_lines.extend(lines)  # Add all the lines from the parent write method
+        result_lines.append(position_line)  # End with position line
+        
+        return result_lines
+EOL"
+43,42,1,0,0.0,python /testbed/test_rst_header_rows.py
+44,43,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class RSTData(FixedWidthData):
+    """"""Data class for RST format that uses proper spacing without delimiters.""""""
+    def write(self, lines):
+        # Get the header rows from the parent class
+        default_header_rows = [] if self.header.start_line is None else [""name""]
+        header_rows = getattr(self, ""header_rows"", default_header_rows)
+        
+        # First part is getting the widths of each column.
+        # List (rows) of list (column values) for data lines
+        vals_list = []
+        col_str_iters = self.str_vals()
+        for vals in zip(*col_str_iters):
+            vals_list.append(vals)
+
+        # List (rows) of list (columns values) for header lines.
+        hdrs_list = []
+        for col_attr in header_rows:
+            vals = [
+                """" if (val := getattr(col.info, col_attr)) is None else str(val)
+                for col in self.cols
+            ]
+            hdrs_list.append(vals)
+
+        # Widths for data columns
+        widths = [
+            max(len(vals[i_col]) for vals in vals_list)
+            for i_col in range(len(self.cols))
+        ]
+        # Incorporate widths for header columns (if there are any)
+        if hdrs_list:
+            for i_col in range(len(self.cols)):
+                widths[i_col] = max(
+                    widths[i_col], max(len(vals[i_col]) for vals in hdrs_list)
+                )
+
+        # Now collect formatted header and data lines into the output lines
+        for vals in hdrs_list:
+            # Format with proper spacing but no delimiters
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        if self.header.position_line is not None:
+            vals = [self.header.position_char * width for width in widths]
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        for vals in vals_list:
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        return lines
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = RSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        print(""Before super().write(), lines has"", len(lines) if lines else 0, ""lines"")
+        lines = super().write(lines)
+        print(""After super().write(), lines has"", len(lines), ""lines"")
+        for i, line in enumerate(lines):
+            print(f""{i}: '{line}'"")
+        
+        # For RST tables, we need the position line (with = characters) at the beginning and end
+        # Find the position line (the one with = characters)
+        position_line = None
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                position_line = line
+                break
+                
+        if position_line is None or not lines:
+            return lines
+
+        # Create the final table with the position line at the beginning and end
+        result_lines = [position_line]  # Start with position line
+        result_lines.extend(lines)  # Add all the lines from the parent write method
+        result_lines.append(position_line)  # End with position line
+        
+        print(""Final result_lines has"", len(result_lines), ""lines"")
+        for i, line in enumerate(result_lines):
+            print(f""{i}: '{line}'"")
+        
+        return result_lines
+EOL"
+45,44,1,0,0.0,python /testbed/test_rst_header_rows.py
+46,45,1,0,0.0,"grep -n ""def write"" /testbed/astropy/io/ascii/ui.py | head -20"
+47,46,1,0,0.0,"sed -n '921,970p' /testbed/astropy/io/ascii/ui.py"
+48,47,1,0,0.0,"sed -n '970,1020p' /testbed/astropy/io/ascii/ui.py"
+49,48,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class RSTData(FixedWidthData):
+    """"""Data class for RST format that uses proper spacing without delimiters.""""""
+    def write(self, lines):
+        # Get the header rows from the parent class
+        default_header_rows = [] if self.header.start_line is None else [""name""]
+        header_rows = getattr(self, ""header_rows"", default_header_rows)
+        
+        # First part is getting the widths of each column.
+        # List (rows) of list (column values) for data lines
+        vals_list = []
+        col_str_iters = self.str_vals()
+        for vals in zip(*col_str_iters):
+            vals_list.append(vals)
+
+        # List (rows) of list (columns values) for header lines.
+        hdrs_list = []
+        for col_attr in header_rows:
+            vals = [
+                """" if (val := getattr(col.info, col_attr)) is None else str(val)
+                for col in self.cols
+            ]
+            hdrs_list.append(vals)
+
+        # Widths for data columns
+        widths = [
+            max(len(vals[i_col]) for vals in vals_list)
+            for i_col in range(len(self.cols))
+        ]
+        # Incorporate widths for header columns (if there are any)
+        if hdrs_list:
+            for i_col in range(len(self.cols)):
+                widths[i_col] = max(
+                    widths[i_col], max(len(vals[i_col]) for vals in hdrs_list)
+                )
+
+        # Now collect formatted header and data lines into the output lines
+        for vals in hdrs_list:
+            # Format with proper spacing but no delimiters
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        if self.header.position_line is not None:
+            vals = [self.header.position_char * width for width in widths]
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        for vals in vals_list:
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        return lines
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = RSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+
+    def write(self, lines):
+        # Call the parent class write method to generate the basic table
+        lines = super().write(lines)
+        
+        # For RST tables, we need the position line (with = characters) at the beginning and end
+        # Find the position line (the one with = characters)
+        position_line = None
+        for line in lines:
+            if line.strip() and all(c == '=' for c in line.strip()):
+                position_line = line
+                break
+                
+        if position_line is None or not lines:
+            return lines
+
+        # Create the final table with the position line at the beginning and end
+        result_lines = [position_line]  # Start with position line
+        result_lines.extend(lines)  # Add all the lines from the parent write method
+        result_lines.append(position_line)  # End with position line
+        
+        return result_lines
+EOL"
+50,49,1,0,0.0,python /testbed/test_rst_header_rows.py
+51,50,1,0,0.0,"cat > /testbed/astropy/io/ascii/rst.py << 'EOL'
+# Licensed under a 3-clause BSD style license
+""""""
+:Author: Simon Gibbons (simongibbons@gmail.com)
+""""""
+
+
+from .core import DefaultSplitter
+from .fixedwidth import (
+    FixedWidth,
+    FixedWidthData,
+    FixedWidthHeader,
+    FixedWidthTwoLineDataSplitter,
+)
+
+
+class SimpleRSTHeader(FixedWidthHeader):
+    position_line = 0
+    start_line = 1
+    splitter_class = DefaultSplitter
+    position_char = ""=""
+
+    def get_fixedwidth_params(self, line):
+        vals, starts, ends = super().get_fixedwidth_params(line)
+        # The right hand column can be unbounded
+        ends[-1] = None
+        return vals, starts, ends
+
+
+class RSTData(FixedWidthData):
+    """"""Data class for RST format that uses proper spacing without delimiters.""""""
+    def write(self, lines):
+        # Get the header rows from the parent class
+        default_header_rows = [] if self.header.start_line is None else [""name""]
+        header_rows = getattr(self, ""header_rows"", default_header_rows)
+        
+        # First part is getting the widths of each column.
+        # List (rows) of list (column values) for data lines
+        vals_list = []
+        col_str_iters = self.str_vals()
+        for vals in zip(*col_str_iters):
+            vals_list.append(vals)
+
+        # List (rows) of list (columns values) for header lines.
+        hdrs_list = []
+        for col_attr in header_rows:
+            vals = [
+                """" if (val := getattr(col.info, col_attr)) is None else str(val)
+                for col in self.cols
+            ]
+            hdrs_list.append(vals)
+
+        # Widths for data columns
+        widths = [
+            max(len(vals[i_col]) for vals in vals_list)
+            for i_col in range(len(self.cols))
+        ]
+        # Incorporate widths for header columns (if there are any)
+        if hdrs_list:
+            for i_col in range(len(self.cols)):
+                widths[i_col] = max(
+                    widths[i_col], max(len(vals[i_col]) for vals in hdrs_list)
+                )
+
+        # Create the position line
+        position_vals = [self.header.position_char * width for width in widths]
+        formatted_position_vals = []
+        for i, (val, width) in enumerate(zip(position_vals, widths)):
+            formatted_position_vals.append(val.rjust(width))
+        position_line = "" "".join(formatted_position_vals)
+
+        # Add the position line at the beginning
+        lines.append(position_line)
+
+        # Add the header rows
+        for vals in hdrs_list:
+            # Format with proper spacing but no delimiters
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        # Add the position line after the headers
+        lines.append(position_line)
+
+        # Add the data rows
+        for vals in vals_list:
+            formatted_vals = []
+            for i, (val, width) in enumerate(zip(vals, widths)):
+                formatted_vals.append(val.rjust(width))
+            lines.append("" "".join(formatted_vals))
+
+        # Add the position line at the end
+        lines.append(position_line)
+
+        return lines
+
+
+class RST(FixedWidth):
+    """"""reStructuredText simple format table.
+
+    See: https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#simple-tables
+
+    Example::
+
+        ==== ===== ======
+        Col1  Col2  Col3
+        ==== ===== ======
+          1    2.3  Hello
+          2    4.5  Worlds
+        ==== ===== ======
+
+    Currently there is no support for reading tables which utilize continuation lines,
+    or for ones which define column spans through the use of an additional
+    line of dashes in the header.
+
+    """"""
+
+    _format_name = ""rst""
+    _description = ""reStructuredText simple table""
+    data_class = RSTData
+    header_class = SimpleRSTHeader
+
+    def __init__(self, header_rows=None):
+        if header_rows is None:
+            header_rows = [""name""]
+        super().__init__(delimiter_pad=None, bookend=False, header_rows=header_rows)
+EOL"
+52,51,1,0,0.0,python /testbed/test_rst_header_rows.py
+53,52,1,0,0.0,git diff -- /testbed/astropy/io/ascii/rst.py > patch.txt
+54,53,1,0,0.0,cat patch.txt
+55,54,1,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

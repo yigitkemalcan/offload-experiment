@@ -1,0 +1,93 @@
+call_index,step,action,returncode,orig_returncode,command
+1,1,1,0,0.0,"find . -type f -exec grep -l ""parse_duration\|dateparse"" {} \;"
+2,2,1,0,0.0,cat django/utils/dateparse.py
+3,3,1,0,0.0,"echo ""from django.utils.dateparse import parse_duration\nprint('Testing negative duration -1:30:45:')\nprint(parse_duration('-1:30:45'))\nprint('Testing negative duration -2:-30:-45:')\nprint(parse_duration('-2:-30:-45'))"" > test_negative_duration.py"
+4,4,1,1,1.0,python test_negative_duration.py
+5,5,1,0,0.0,"cat > test_negative_duration.py << 'EOL'
+from django.utils.dateparse import parse_duration
+print('Testing negative duration -1:30:45:')
+print(parse_duration('-1:30:45'))
+print('Testing negative duration -2:-30:-45:')
+print(parse_duration('-2:-30:-45'))
+EOL"
+6,6,1,0,0.0,python test_negative_duration.py
+7,7,1,0,0.0,"sed -i ""s/((?:(?P<hours>-?\\d+):)(?=\\d+:\\d+))?/((?:(?P<hours>-?\\d+):)(?=-?\\d+:-?\\d+))?/g"" django/utils/dateparse.py"
+8,8,1,0,0.0,python test_negative_duration.py
+9,9,1,0,0.0,"cat > test_negative_duration.py << 'EOL'
+from django.utils.dateparse import parse_duration, standard_duration_re
+import re
+
+def test_duration(s):
+    print(f""\nTesting '{s}':"")
+    match = standard_duration_re.match(s)
+    if match:
+        print(f""  Match found: {match.groupdict()}"")
+        duration = parse_duration(s)
+        print(f""  Parsed duration: {duration}"")
+    else:
+        print(f""  No match found"")
+
+# Test various negative duration formats
+test_duration('-1:30:45')
+test_duration('-2:-30:-45')
+test_duration('-1:00:00')
+test_duration('1:30:45')
+test_duration('-10:15:30')
+EOL"
+10,10,1,0,0.0,python test_negative_duration.py
+11,11,1,0,0.0,"sed -i ""s/((?:(?P<hours>-?\\d+):)(?=\\d+:\\d+))?/((?:(?P<hours>-?\\d+):)(?=-?\\d+:-?\\d+))?/g"" django/utils/dateparse.py"
+12,12,1,0,0.0,python test_negative_duration.py
+13,13,1,0,0.0,"grep -A 5 ""standard_duration_re"" django/utils/dateparse.py"
+14,14,1,0,0.0,sed -i 's/((?:(?P<hours>-?\\d+):)(?=\\d+:\\d+))?/((?:(?P<hours>-?\\d+):)(?=-?\\d+:-?\\d+))?/g' django/utils/dateparse.py
+15,15,1,0,0.0,"grep -A 5 ""standard_duration_re"" django/utils/dateparse.py"
+16,16,1,0,0.0,python test_negative_duration.py
+17,17,1,0,0.0,"cat > test_timedelta.py << 'EOL'
+from datetime import timedelta
+
+# Test how timedelta handles negative components
+days = timedelta(0)  # No days offset
+duration = -1 * timedelta(hours=2, minutes=30, seconds=45)
+print(f""-1 * timedelta(hours=2, minutes=30, seconds=45) = {duration}"")
+
+# Test with direct negative values
+duration = timedelta(hours=-2, minutes=-30, seconds=-45)
+print(f""timedelta(hours=-2, minutes=-30, seconds=-45) = {duration}"")
+EOL"
+18,18,1,0,0.0,python test_timedelta.py
+19,19,1,0,0.0,"cat > verify_fix.py << 'EOL'
+from django.utils.dateparse import parse_duration, standard_duration_re
+
+def verify_negative_duration(duration_str):
+    print(f""\nTesting \""{duration_str}\"":"")
+    match = standard_duration_re.match(duration_str)
+    if match:
+        print(f""  Match found: {match.groupdict()}"")
+        duration = parse_duration(duration_str)
+        print(f""  Parsed duration: {duration}"")
+        return True
+    else:
+        print(f""  No match found - this indicates the bug still exists"")
+        return False
+
+# Test the specific case mentioned in the PR
+duration_str = ""-1:30:45""
+match = standard_duration_re.match(duration_str)
+print(f""\nPattern match for '{duration_str}': {match is not None}"")
+if match:
+    print(f""Groups: {match.groupdict()}"")
+    
+# Test negative hours, minutes, and seconds
+duration_str = ""-2:-30:-45""
+match = standard_duration_re.match(duration_str)
+print(f""\nPattern match for '{duration_str}': {match is not None}"")
+if match:
+    print(f""Groups: {match.groupdict()}"")
+    
+# Verify the fix works for the case mentioned in the PR
+success = verify_negative_duration(""-1:30:45"")
+print(f""\nFix verification: {'PASSED' if success else 'FAILED'}"")
+EOL"
+20,20,1,0,0.0,python verify_fix.py
+21,21,1,0,0.0,git diff -- django/utils/dateparse.py > patch.txt
+22,22,1,0,0.0,cat patch.txt
+23,23,1,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

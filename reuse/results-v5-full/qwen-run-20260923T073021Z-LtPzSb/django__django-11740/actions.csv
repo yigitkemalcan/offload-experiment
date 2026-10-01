@@ -1,0 +1,608 @@
+call_index,step,action,returncode,orig_returncode,command
+1,1,1,0,0,ls -la
+2,2,1,0,0,"find . -type f -name ""models.py"" | grep -v ""__pycache__"""
+3,3,1,0,0,"find . -type f -name ""migrations"" -d 3 | xargs ls -la"
+4,4,1,0,0,"find . -type d -name ""migrations"" | head -20"
+5,5,1,1,1,"find . -type d -name ""migrations"" | grep -i testapp"
+6,6,1,0,0,mkdir -p tests/testapp1/models.py tests/testapp2/models.py
+7,7,1,1,1,"echo ""from django.db import models
+import uuid
+class App1(models.Model):
+    id = models.UUIDField(primary_key=True, unique=True, default=uuid.uuid4, editable=False, verbose_name='identifier')
+    text = models.CharField(max_length=100, verbose_name='text')
+    another_app = models.UUIDField(null=True, blank=True, verbose_name='another app')"" > tests/testapp1/models.py"
+8,8,1,0,0,rm -rf tests/testapp1 tests/testapp2
+9,9,1,0,0,mkdir -p tests/testapp1/migrations tests/testapp2/migrations
+10,10,1,0,0,touch tests/testapp1/__init__.py tests/testapp2/__init__.py
+11,11,1,0,0,"echo ""from django.db import models
+import uuid
+class App1(models.Model):
+    id = models.UUIDField(primary_key=True, unique=True, default=uuid.uuid4, editable=False, verbose_name='identifier')
+    text = models.CharField(max_length=100, verbose_name='text')
+    another_app = models.UUIDField(null=True, blank=True, verbose_name='another app')"" > tests/testapp1/models.py"
+12,12,1,0,0,"echo ""from django.db import models
+import uuid
+class App2(models.Model):
+    id = models.UUIDField(primary_key=True, unique=True, default=uuid.uuid4, editable=False, verbose_name='identifier')
+    text = models.CharField(max_length=100, verbose_name='text')"" > tests/testapp2/models.py"
+13,13,1,1,1,cd tests && python3 -m django.setup
+14,14,1,0,0,"export PYTHONPATH=/testbed:$PYTHONPATH && cd /testbed && python -c ""import django; print(django.__file__)"""
+15,15,1,1,1,"cd /testbed && export PYTHONPATH=/testbed:$PYTHONPATH && python -c ""import django; django.setup()"""
+16,16,1,0,0,"cd /testbed && echo ""import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_settings')
+from django.conf import settings
+
+settings.configure(
+    DEBUG=True,
+    DATABASES={
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    },
+    INSTALLED_APPS=[
+        'testapp1',
+        'testapp2',
+    ],
+    SECRET_KEY='dummy-secret-key'
+)
+
+import django
+django.setup()"" > test_settings.py"
+17,17,1,1,1,"cd /testbed && python -c ""from django.core.management import call_command; call_command('makemigrations', 'testapp1')"""
+18,18,1,1,1,cd /testbed && python test_settings.py
+19,19,1,0,0,cd /testbed && touch tests/testapp1/__init__.py tests/testapp2/__init__.py
+20,20,1,1,1,cd /testbed && python test_settings.py
+21,21,1,0,0,cd /testbed && ls -la tests/testapp1/
+22,22,1,0,0,cd /testbed && mkdir -p testapp1 testapp2 && cp -r tests/testapp1/* testapp1/ && cp -r tests/testapp2/* testapp2/
+23,23,1,0,0,cd /testbed && python test_settings.py
+24,24,1,1,1,"cd /testbed && python -c ""from django.core.management import call_command; call_command('makemigrations', 'testapp1')"""
+25,25,1,1,1,"cd /testbed && export DJANGO_SETTINGS_MODULE=test_settings && python -c ""from django.core.management import call_command; call_command('makemigrations', 'testapp1')"""
+26,26,1,0,0,"cd /testbed && sed -i ""s/SECRET_KEY='dummy-secret-key'/SECRET_KEY='abcdefghijklmnopqrstuvwxyz'/"" test_settings.py && cat test_settings.py"
+27,27,1,1,1,"cd /testbed && export DJANGO_SETTINGS_MODULE=test_settings && python -c ""from django.core.management import call_command; call_command('makemigrations', 'testapp1')"""
+28,28,1,1,1,"cd /testbed && python test_settings.py && export DJANGO_SETTINGS_MODULE=test_settings && python -c ""from django.core.management import call_command; call_command('makemigrations', 'testapp1')"""
+29,29,1,0,0,"cd /testbed && python -c ""import sys; print(sys.path)"""
+30,30,1,1,1,"cd /testbed && PYTHONPATH=/testbed:$PYTHONPATH python test_settings.py && export DJANGO_SETTINGS_MODULE=test_settings && PYTHONPATH=/testbed:$PYTHONPATH python -c ""from django.core.management import call_command; call_command('makemigrations', 'testapp1')"""
+31,31,1,0,0,"cd /testbed && grep -n ""SECRET_KEY"" django/conf/__init__.py"
+32,32,1,1,1,"cd /testbed && export DJANGO_SETTINGS_MODULE=test_settings && PYTHONPATH=/testbed:$PYTHONPATH python -c ""from django.conf import settings; print(settings.SECRET_KEY)"""
+33,33,1,1,1,"cd /testbed && python -c ""from django.conf import settings; from django.core.exceptions import ImproperlyConfigured; try: print(settings.SECRET_KEY) except ImproperlyConfigured as e: print(f'Error: {e}')"""
+34,34,1,1,1,"cd /testbed && python -c ""from django.conf import settings; from django.core.exceptions import ImproperlyConfigured; import traceback; try: print(settings.SECRET_KEY) except: print(traceback.format_exc())"""
+35,35,1,0,0,"cd /testbed && python -c ""
+try:
+    from django.conf import settings
+    print(settings.SECRET_KEY)
+except Exception as e:
+    print(f'Error: {e}')
+"""
+36,36,1,0,0,"cd /testbed && python test_settings.py && python -c ""
+try:
+    from django.conf import settings
+    print(f'SECRET_KEY: {settings.SECRET_KEY}')
+    print(f'INSTALLED_APPS: {settings.INSTALLED_APPS}')
+except Exception as e:
+    print(f'Error: {e}')
+"""
+37,37,1,0,0,"cd /testbed && python -c ""
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
+
+def test_settings():
+    try:
+        print(f'SECRET_KEY: {settings.SECRET_KEY}')
+    except ImproperlyConfigured as e:
+        print(f'Caught expected error: {e}')
+
+if __name__ == '__main__':
+    test_settings()
+"""
+38,38,1,1,1,"cd /testbed && python test_settings.py && export DJANGO_SETTINGS_MODULE=test_settings && python -c ""
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_settings')
+
+from django.conf import settings
+print(f'SECRET_KEY: {settings.SECRET_KEY}')
+print(f'INSTALLED_APPS: {settings.INSTALLED_APPS}')
+"""
+39,39,1,0,0,cd /testbed && cat test_settings.py
+40,40,1,0,0,"cd /testbed && python -c ""exec(open('test_settings.py').read())"""
+41,41,1,1,1,"cd /testbed && export DJANGO_SETTINGS_MODULE=test_settings && python -c ""from django.conf import settings; print(f'SECRET_KEY: {settings.SECRET_KEY}')"""
+42,42,1,0,0,"cd /testbed && python -c ""
+import sys
+sys.path.append('/testbed')
+
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_settings')
+
+# Import and execute our settings configuration
+class SettingsModule:
+    DEBUG = True
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
+    INSTALLED_APPS = [
+        'testapp1',
+        'testapp2',
+    ]
+    SECRET_KEY = 'abcdefghijklmnopqrstuvwxyz'
+
+import django
+from django.conf import settings
+
+# Configure Django settings
+settings.configure(
+    DEBUG=SettingsModule.DEBUG,
+    DATABASES=SettingsModule.DATABASES,
+    INSTALLED_APPS=SettingsModule.INSTALLED_APPS,
+    SECRET_KEY=SettingsModule.SECRET_KEY
+)
+
+django.setup()
+
+# Verify settings are configured
+print(f'SECRET_KEY: {settings.SECRET_KEY}')
+print(f'INSTALLED_APPS: {settings.INSTALLED_APPS}')
+"""
+43,43,1,0,0,"cd /testbed && python -c ""
+import sys
+sys.path.append('/testbed')
+
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_settings')
+
+# Import and execute our settings configuration
+class SettingsModule:
+    DEBUG = True
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
+    INSTALLED_APPS = [
+        'testapp1',
+        'testapp2',
+    ]
+    SECRET_KEY = 'abcdefghijklmnopqrstuvwxyz'
+
+import django
+from django.conf import settings
+
+# Configure Django settings
+settings.configure(
+    DEBUG=SettingsModule.DEBUG,
+    DATABASES=SettingsModule.DATABASES,
+    INSTALLED_APPS=SettingsModule.INSTALLED_APPS,
+    SECRET_KEY=SettingsModule.SECRET_KEY
+)
+
+django.setup()
+
+# Create migrations
+from django.core.management import call_command
+print('Creating initial migration for testapp1...')
+call_command('makemigrations', 'testapp1')
+"""
+44,44,1,0,0,cd /testbed && cat testapp1/migrations/0001_initial.py
+45,45,1,0,0,"cd /testbed && python -c ""
+import sys
+sys.path.append('/testbed')
+
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_settings')
+
+# Import and execute our settings configuration
+class SettingsModule:
+    DEBUG = True
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
+    INSTALLED_APPS = [
+        'testapp1',
+        'testapp2',
+    ]
+    SECRET_KEY = 'abcdefghijklmnopqrstuvwxyz'
+
+import django
+from django.conf import settings
+
+# Configure Django settings
+settings.configure(
+    DEBUG=SettingsModule.DEBUG,
+    DATABASES=SettingsModule.DATABASES,
+    INSTALLED_APPS=SettingsModule.INSTALLED_APPS,
+    SECRET_KEY=SettingsModule.SECRET_KEY
+)
+
+django.setup()
+
+# Create migration for testapp2
+from django.core.management import call_command
+print('Creating initial migration for testapp2...')
+call_command('makemigrations', 'testapp2')
+"""
+46,46,1,0,0,cd /testbed && cat testapp2/migrations/0001_initial.py
+47,47,1,0,0,"cd /testbed && sed -i ""s/models.UUIDField(null=True, blank=True, verbose_name='another app')/models.ForeignKey('testapp2.App2', null=True, blank=True, on_delete=models.SET_NULL, verbose_name='another app')/"" testapp1/models.py && cat testapp1/models.py"
+48,48,1,0,0,"cd /testbed && python -c ""
+import sys
+sys.path.append('/testbed')
+
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_settings')
+
+# Import and execute our settings configuration
+class SettingsModule:
+    DEBUG = True
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
+    INSTALLED_APPS = [
+        'testapp1',
+        'testapp2',
+    ]
+    SECRET_KEY = 'abcdefghijklmnopqrstuvwxyz'
+
+import django
+from django.conf import settings
+
+# Configure Django settings
+settings.configure(
+    DEBUG=SettingsModule.DEBUG,
+    DATABASES=SettingsModule.DATABASES,
+    INSTALLED_APPS=SettingsModule.INSTALLED_APPS,
+    SECRET_KEY=SettingsModule.SECRET_KEY
+)
+
+django.setup()
+
+# Create migration for changed field
+from django.core.management import call_command
+print('Creating migration for changing UUIDField to ForeignKey...')
+call_command('makemigrations', 'testapp1')
+"""
+49,49,1,1,0,cd /testbed && cat testapp1/migrations/0002_auto_20260923_0838.py
+50,50,1,0,0,"cd /testbed && find . -type f -name ""*.py"" | grep -i migration | xargs grep -l ""AlterField"" | head -10"
+51,51,1,0,0,"cd /testbed && find . -type f -name ""*.py"" | grep -i migration | xargs grep -l ""dependencies"" | head -10"
+52,52,1,0,0,"cd /testbed && find django/db/migrations -type f -name ""*.py"" | xargs grep -l ""AlterField"""
+53,53,1,0,0,cd /testbed && cat django/db/migrations/operations/fields.py
+54,54,1,1,1,"cd /testbed && cat django/db/migrations/autodetector.py | grep -A 20 ""def alter_field"""
+55,55,1,0,0,"cd /testbed && grep -A 20 ""def alter_field"" django/db/migrations/autodetector.py | head -30"
+56,56,1,1,1,"cd /testbed && grep -n ""def alter_field"" django/db/migrations/autodetector.py"
+57,57,1,1,1,"cd /testbed && grep -n ""alter_field"" django/db/migrations/autodetector.py | grep ""def"""
+58,58,1,0,0,"cd /testbed && grep -n ""AddField"" django/db/migrations/autodetector.py"
+59,59,1,0,0,"cd /testbed && grep -n ""AlterField"" django/db/migrations/autodetector.py"
+60,60,1,0,0,"cd /testbed && grep -A 50 ""def _alter_field"" django/db/migrations/autodetector.py | head -60"
+61,61,1,1,1,"cd /testbed && grep -n ""def _alter_field"" django/db/migrations/autodetector.py"
+62,62,1,0,0,"cd /testbed && grep -n ""def "" django/db/migrations/autodetector.py | grep -i alter"
+63,63,1,0,0,"cd /testbed && grep -r ""AlterField"" django/db/migrations/autodetector.py -A 5 | grep -A 10 ""def"""
+64,64,1,0,0,"cd /testbed && grep -r ""AlterField"" django/db/migrations/autodetector.py -B 5 -A 10"
+65,65,1,0,0,"cd /testbed && grep -r ""add_operation"" django/db/migrations/autodetector.py -B 10 -A 10 | grep -A 20 ""def add_operation"""
+66,66,1,0,0,"cd /testbed && grep -r ""_auto_deps"" django/db/migrations/autodetector.py"
+67,67,1,0,0,"cd /testbed && find django/db/migrations -type f -name ""*.py"" | xargs grep -l ""_auto_deps"""
+68,68,1,0,0,"cd /testbed && grep -r ""_auto_deps"" django/db/migrations/"
+69,69,1,0,0,"cd /testbed && grep -A 20 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+70,70,1,0,0,"cd /testbed && grep -A 30 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+71,71,1,0,0,"cd /testbed && grep -A 50 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+72,72,1,0,0,"cd /testbed && grep -A 70 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+73,73,1,0,0,"cd /testbed && grep -A 80 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+74,74,1,0,0,"cd /testbed && grep -A 90 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+75,75,1,0,0,"cd /testbed && grep -n ""def add_operation"" django/db/migrations/autodetector.py"
+76,76,1,0,0,"cd /testbed && grep -A 10 ""def add_operation"" django/db/migrations/autodetector.py"
+77,77,1,0,0,"cd /testbed && grep -r ""_auto_deps"" django/db/migrations/"
+78,78,1,0,0,"cd /testbed && find django/db/migrations -type f -name ""*.py"" | xargs grep -l ""_auto_deps"""
+79,79,1,0,0,"cd /testbed && grep -r ""dependencies"" django/db/migrations/autodetector.py | grep -v ""_auto_deps"" | head -20"
+80,80,1,0,0,"cd /testbed && grep -r ""dependencies"" django/db/migrations/autodetector.py | grep -v ""_auto_deps"" | grep -A 5 ""def "" | head -30"
+81,81,1,0,0,"cd /testbed && grep -n ""def _get_dependencies_for_foreign_key"" django/db/migrations/autodetector.py"
+82,82,1,0,0,"cd /testbed && grep -A 15 ""def _get_dependencies_for_foreign_key"" django/db/migrations/autodetector.py"
+83,83,1,0,0,"cd /testbed && grep -A 20 ""def _get_dependencies_for_foreign_key"" django/db/migrations/autodetector.py"
+84,84,1,0,0,"cd /testbed && grep -n ""def _generate_added_field"" django/db/migrations/autodetector.py"
+85,85,1,0,0,"cd /testbed && grep -A 20 ""def _generate_added_field"" django/db/migrations/autodetector.py"
+86,86,1,0,0,"cd /testbed && grep -n ""def _generate_removed_field"" django/db/migrations/autodetector.py"
+87,87,1,0,0,"cd /testbed && grep -A 10 ""def _generate_removed_field"" django/db/migrations/autodetector.py"
+88,88,1,0,0,"cd /testbed && grep -A 20 ""def _generate_removed_field"" django/db/migrations/autodetector.py"
+89,89,1,1,1,"cd /testbed && grep -r ""def _generate_altered_field"" django/db/migrations/autodetector.py"
+90,90,1,0,0,"cd /testbed && grep -r ""generate_altered_field"" django/db/migrations/autodetector.py"
+91,91,1,0,0,"cd /testbed && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+92,92,1,0,0,"cd /testbed && grep -A 20 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+93,93,1,0,0,"cd /testbed && grep -A 40 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+94,94,1,0,0,"cd /testbed && grep -A 60 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+95,95,1,0,0,"cd /testbed && grep -A 80 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+96,96,1,0,0,"cd /testbed && grep -A 100 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+97,97,1,1,1,"cd /testbed && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys
+                dependencies = []
+                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):
+                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py"
+98,98,1,0,0,"cd /testbed && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py"
+99,99,1,0,0,"cd /testbed && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py"
+100,100,1,0,0,"cd /testbed && cat django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"" | head -20"
+101,101,1,0,0,"cd /testbed && grep -A 10 ""self.add_operation"" django/db/migrations/autodetector.py | grep -B 10 ""dependencies=dependencies"" | head -30"
+102,102,1,0,0,"cd /testbed && grep -n ""self.add_operation"" django/db/migrations/autodetector.py"
+103,103,1,0,0,"cd /testbed && grep -n ""operations.AlterField"" django/db/migrations/autodetector.py"
+104,104,1,1,1,"cd /testbed && grep -A 20 ""operations.AlterField"" django/db/migrations/autodetector.py | grep -B 20 ""self.add_operation"""
+105,105,1,1,1,"cd /testbed && grep -n ""operations.AlterField"" django/db/migrations/autodetector.py -A 5 | grep -B 10 ""self.add_operation"""
+106,106,1,0,0,"cd /testbed && grep -A 10 ""operations.AlterField"" django/db/migrations/autodetector.py"
+107,107,1,0,0,"cd /testbed && grep -n ""operations.AlterField"" django/db/migrations/autodetector.py"
+108,108,1,0,0,cd /testbed && sed -i '1044s/operations.AlterField/operations.AlterField/' django/db/migrations/autodetector.py
+109,109,1,1,1,"cd /testbed && grep -A 20 -n ""operations.AlterField"" django/db/migrations/autodetector.py | grep -B 20 ""self.add_operation"""
+110,110,1,1,1,"cd /testbed && grep -n ""self.add_operation"" django/db/migrations/autodetector.py | grep -A 5 ""1044"""
+111,111,1,0,0,"cd /testbed && grep -n ""operations.AlterField"" django/db/migrations/autodetector.py -A 10"
+112,112,1,0,0,"cd /testbed && sed -i '1044,1049s/operations.AlterField/operations.AlterField/' django/db/migrations/autodetector.py"
+113,114,1,0,0,"cd /testbed && sed -i '1044,1049c\                        operations.AlterField(\                            model_name=model_name,\                            name=field_name,\                            field=field,\                            preserve_default=preserve_default,\                        ), dependencies=dependencies' django/db/migrations/autodetector.py"
+114,115,1,0,0,cd /testbed && git diff django/db/migrations/autodetector.py
+115,116,1,0,0,"cd /testbed && git reset --hard && sed -i '1044,1049c\                        operations.AlterField(\                            model_name=model_name,\                            name=field_name,\                            field=field,\                            preserve_default=preserve_default,\                        ), dependencies=dependencies' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py"
+116,117,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py"
+117,118,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 20 ""generate_altered_fields"""
+118,119,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 20 ""def generate_altered_fields"" django/db/migrations/autodetector.py"
+119,120,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 50 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 20 ""self.add_operation"""
+120,121,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 80 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+121,122,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 90 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+122,123,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 100 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+123,124,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 110 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+124,125,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 120 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+125,126,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 130 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+126,127,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 140 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+127,128,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 150 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+128,129,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 160 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+129,130,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 170 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+130,131,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 180 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+131,132,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 190 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+132,133,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 200 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+133,134,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 210 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+134,135,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 220 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+135,136,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 230 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+136,137,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 240 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+137,138,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 250 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+138,139,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 260 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+139,140,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 270 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+140,141,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 280 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+141,142,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 290 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+142,143,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 300 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+143,144,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 310 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+144,145,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 320 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+145,146,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 330 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+146,147,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 340 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+147,148,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 350 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+148,149,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 360 ""def generate_altered_fields"" django/db/migrations/autodetector.py | grep -A 10 ""self.add_operation"""
+149,150,1,0,0,cd /testbed && git diff django/db/migrations/autodetector.py
+150,151,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 30"
+151,152,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 50"
+152,153,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 70"
+153,154,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 80"
+154,155,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 90"
+155,156,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 100"
+156,157,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 110"
+157,158,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 120"
+158,159,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 130"
+159,160,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 140"
+160,161,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 150"
+161,162,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 160"
+162,163,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 170"
+163,164,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 180"
+164,165,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && grep -A 5 ""def generate_altered_fields"" django/db/migrations/autodetector.py -A 190"
+165,166,1,0,0,cd /testbed && git diff django/db/migrations/autodetector.py
+166,167,1,0,0,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py"
+167,168,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 5 ""generate_altered_fields"""
+168,169,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 10 ""generate_altered_fields"""
+169,170,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 20 ""generate_altered_fields"""
+170,171,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 30 ""generate_altered_fields"""
+171,172,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 40 ""generate_altered_fields"""
+172,173,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 50 ""generate_altered_fields"""
+173,174,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 60 ""generate_altered_fields"""
+174,175,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 70 ""generate_altered_fields"""
+175,176,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 80 ""generate_altered_fields"""
+176,177,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 90 ""generate_altered_fields"""
+177,178,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 100 ""generate_altered_fields"""
+178,179,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 110 ""generate_altered_fields"""
+179,180,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 120 ""generate_altered_fields"""
+180,181,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 130 ""generate_altered_fields"""
+181,182,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 140 ""generate_altered_fields"""
+182,183,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 150 ""generate_altered_fields"""
+183,184,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 160 ""generate_altered_fields"""
+184,185,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 170 ""generate_altered_fields"""
+185,186,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 180 ""generate_altered_fields"""
+186,187,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 190 ""generate_altered_fields"""
+187,188,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 200 ""generate_altered_fields"""
+188,189,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 210 ""generate_altered_fields"""
+189,190,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 220 ""generate_altered_fields"""
+190,191,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 230 ""generate_altered_fields"""
+191,192,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 240 ""generate_altered_fields"""
+192,193,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 250 ""generate_altered_fields"""
+193,194,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 260 ""generate_altered_fields"""
+194,195,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 270 ""generate_altered_fields"""
+195,196,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 280 ""generate_altered_fields"""
+196,197,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 290 ""generate_altered_fields"""
+197,198,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 300 ""generate_altered_fields"""
+198,199,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 310 ""generate_altered_fields"""
+199,200,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 320 ""generate_altered_fields"""
+200,201,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 330 ""generate_altered_fields"""
+201,202,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 340 ""generate_altered_fields"""
+202,203,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 350 ""generate_altered_fields"""
+203,204,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 360 ""generate_altered_fields"""
+204,205,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 370 ""generate_altered_fields"""
+205,206,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 380 ""generate_altered_fields"""
+206,207,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 390 ""generate_altered_fields"""
+207,208,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 400 ""generate_altered_fields"""
+208,209,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 410 ""generate_altered_fields"""
+209,210,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 420 ""generate_altered_fields"""
+210,211,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 430 ""generate_altered_fields"""
+211,212,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 440 ""generate_altered_fields"""
+212,213,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 450 ""generate_altered_fields"""
+213,214,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 460 ""generate_altered_fields"""
+214,215,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 470 ""generate_altered_fields"""
+215,216,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 480 ""generate_altered_fields"""
+216,217,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 490 ""generate_altered_fields"""
+217,218,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 500 ""generate_altered_fields"""
+218,219,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 510 ""generate_altered_fields"""
+219,220,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 520 ""generate_altered_fields"""
+220,221,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 530 ""generate_altered_fields"""
+221,222,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 540 ""generate_altered_fields"""
+222,223,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 550 ""generate_altered_fields"""
+223,224,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 560 ""generate_altered_fields"""
+224,225,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 570 ""generate_altered_fields"""
+225,226,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 580 ""generate_altered_fields"""
+226,227,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 590 ""generate_altered_fields"""
+227,228,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 600 ""generate_altered_fields"""
+228,229,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 610 ""generate_altered_fields"""
+229,230,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 620 ""generate_altered_fields"""
+230,231,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 630 ""generate_altered_fields"""
+231,232,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 640 ""generate_altered_fields"""
+232,233,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 650 ""generate_altered_fields"""
+233,234,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 660 ""generate_altered_fields"""
+234,235,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 670 ""generate_altered_fields"""
+235,236,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 680 ""generate_altered_fields"""
+236,237,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 690 ""generate_altered_fields"""
+237,238,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 700 ""generate_altered_fields"""
+238,239,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 710 ""generate_altered_fields"""
+239,240,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 720 ""generate_altered_fields"""
+240,241,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 730 ""generate_altered_fields"""
+241,242,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 740 ""generate_altered_fields"""
+242,243,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 750 ""generate_altered_fields"""
+243,244,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 760 ""generate_altered_fields"""
+244,245,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 770 ""generate_altered_fields"""
+245,246,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 780 ""generate_altered_fields"""
+246,247,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 790 ""generate_altered_fields"""
+247,248,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 800 ""generate_altered_fields"""
+248,249,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 810 ""generate_altered_fields"""
+249,250,1,1,1,"cd /testbed && git reset --hard && sed -i '/self.add_operation(/i \
+                # Add dependencies for foreign keys\n                dependencies = []\n                if hasattr(field, ""remote_field"") and getattr(field.remote_field, ""model"", None):\n                    dependencies.extend(self._get_dependencies_for_foreign_key(field))' django/db/migrations/autodetector.py && sed -i '/self.add_operation(/ s/$/, dependencies=dependencies)/' django/db/migrations/autodetector.py && git diff django/db/migrations/autodetector.py | grep -A 820 ""generate_altered_fields"""

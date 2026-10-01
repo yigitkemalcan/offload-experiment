@@ -1,0 +1,98 @@
+call_index,step,action,returncode,orig_returncode,command
+1,1,1,0,0.0,"find . -type f -name ""*.py"" | xargs grep -l ""UsernameValidator"""
+2,2,1,0,0.0,cat django/contrib/auth/validators.py
+3,3,1,2,2.0,"sed -i 's/^    regex = r\'^\[/\\A\[/g; s/\+$""/\+\\Z""/g' django/contrib/auth/validators.py"
+4,4,1,0,0.0,"sed -i ""s/^    regex = r'\^/    regex = r'\\A/; s/\+$'/\+\\Z'/"" django/contrib/auth/validators.py"
+5,5,1,0,0.0,cat django/contrib/auth/validators.py
+6,6,1,1,1.0,"python3 -c ""
+import re
+with open('django/contrib/auth/validators.py', 'r') as f:
+    content = f.read()
+content = re.sub(r""regex = r'\\^"", ""regex = r'\\\\A"", content)
+content = re.sub(r""\\+\$'"", ""\\+\\\\Z'"", content)
+with open('django/contrib/auth/validators.py', 'w') as f:
+    f.write(content)
+"""
+7,7,1,1,1.0,"python3 -c ""
+import re
+with open('django/contrib/auth/validators.py', 'r') as f:
+    content = f.read()
+content = re.sub(r""regex = r'\\^"", ""regex = r'\\\\A"", content)
+content = re.sub(r""\\+\\$'"", ""\\+\\\\Z'"", content)
+with open('django/contrib/auth/validators.py', 'w') as f:
+    f.write(content)
+"""
+8,8,1,0,0.0,"sed -i ""s/regex = r'\\^/regex = r'\\\\A/g; s/\\+$'/\\+\\\\Z'/g"" django/contrib/auth/validators.py"
+9,9,1,0,0.0,cat django/contrib/auth/validators.py
+10,10,1,0,0.0,"cp django/contrib/auth/validators.py django/contrib/auth/validators.py.bak && sed -i ""s/regex = r'\\^/regex = r'\\\\A/g"" django/contrib/auth/validators.py && sed -i ""s/\\+$'/\\+\\\\Z'/g"" django/contrib/auth/validators.py"
+11,11,1,0,0.0,cat django/contrib/auth/validators.py
+12,12,1,0,0.0,"python3 -c ""
+import re
+with open('django/contrib/auth/validators.py', 'r') as f:
+    content = f.read()
+content = re.sub(r'regex = r\'\\^', 'regex = r\'\\\\A', content)
+content = re.sub(r'\\+\\$\'', '\\+\\\\Z\'', content)
+with open('django/contrib/auth/validators.py', 'w') as f:
+    f.write(content)
+"""
+13,13,1,0,0.0,cat django/contrib/auth/validators.py
+14,14,1,1,1.0,"python3 -c ""
+with open('django/contrib/auth/validators.py', 'r') as f:
+    lines = f.readlines()
+
+with open('django/contrib/auth/validators.py', 'w') as f:
+    for line in lines:
+        if ""regex = r'^"" in line:
+            f.write(line.replace(""regex = r'^"", ""regex = r'\\A""))
+        elif ""\\+$'"" in line:
+            f.write(line.replace(""\\+$'"", ""\\+\\Z'""))
+        else:
+            f.write(line)
+"""
+15,15,1,0,0.0,"python3 -c ""
+with open('django/contrib/auth/validators.py', 'r') as f:
+    lines = f.readlines()
+
+with open('django/contrib/auth/validators.py', 'w') as f:
+    for line in lines:
+        if 'regex = r\'^' in line:
+            f.write(line.replace('regex = r\'^', 'regex = r\\A'))
+        elif '\\+$\'' in line:
+            f.write(line.replace('\\+$\'', '\\+\\Z\''))
+        else:
+            f.write(line)
+"""
+16,16,1,0,0.0,cat django/contrib/auth/validators.py
+17,17,1,0,0.0,"cat > temp_validators.py << 'EOL'
+import re
+
+from django.core import validators
+from django.utils.deconstruct import deconstructible
+from django.utils.translation import gettext_lazy as _
+
+
+@deconstructible
+class ASCIIUsernameValidator(validators.RegexValidator):
+    regex = r'\A[\w.@+-]+\Z'
+    message = _(
+        'Enter a valid username. This value may contain only English letters, '
+        'numbers, and @/./+/-/_ characters.'
+    )
+    flags = re.ASCII
+
+
+@deconstructible
+class UnicodeUsernameValidator(validators.RegexValidator):
+    regex = r'\A[\w.@+-]+\Z'
+    message = _(
+        'Enter a valid username. This value may contain only letters, '
+        'numbers, and @/./+/-/_ characters.'
+    )
+    flags = 0
+EOL
+
+mv temp_validators.py django/contrib/auth/validators.py"
+18,18,1,0,0.0,cat django/contrib/auth/validators.py
+19,19,1,0,0.0,git diff -- django/contrib/auth/validators.py > patch.txt
+20,20,1,0,0.0,cat patch.txt
+21,22,1,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

@@ -1,0 +1,33 @@
+call_index,step,action,returncode,orig_returncode,command
+1,1,1,0,0.0,"find /testbed -type f -name ""*.py"" | grep -i ""itrs\|altaz\|hadec"" | sort"
+2,2,1,0,0.0,cat /testbed/astropy/coordinates/builtin_frames/itrs.py
+3,3,1,0,0.0,cat /testbed/astropy/coordinates/builtin_frames/altaz.py
+4,4,1,0,0.0,cat /testbed/astropy/coordinates/builtin_frames/hadec.py
+5,5,1,0,0.0,"find /testbed -type f -name ""*.py"" | xargs grep -l ""itrs.*transform"" | head -10"
+6,6,1,0,0.0,cat /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py
+7,7,1,0,0.0,"find /testbed -type f -name ""*.py"" | xargs grep -l ""itrs.*altaz\|itrs.*hadec"" | head -10"
+8,8,1,0,0.0,"find /testbed -type f -name ""*observed*.py"""
+9,9,1,0,0.0,cat /testbed/astropy/coordinates/builtin_frames/icrs_observed_transforms.py
+10,10,1,0,0.0,"find /testbed -type f -name ""*.py"" | xargs grep -l ""itrs.*to.*altaz\|itrs.*to.*hadec"" | head -10"
+11,11,1,0,0.0,cat /testbed/astropy/coordinates/tests/test_regression.py
+12,12,1,0,0.0,"find /testbed -type f -name ""*.py"" | xargs grep -l ""test_straight_overhead"""
+13,13,1,0,0.0,"grep -A 50 ""test_straight_overhead"" /testbed/astropy/coordinates/tests/test_intermediate_transformations.py"
+14,14,1,0,0.0,"find /testbed -type f -name ""*.py"" | xargs grep -l ""itrs.*altaz\|itrs.*hadec"" | head -10"
+15,15,1,0,0.0,"find /testbed -type f -name ""*.py"" | xargs grep -l ""itrs.*to.*altaz\|itrs.*to.*hadec"" | head -10"
+16,16,1,0,0.0,"find /testbed -type f -name ""*.py"" | xargs grep -l ""frame_transform_graph.*itrs"" | head -10"
+17,17,1,0,0.0,"find /testbed -type f -name ""*.py"" | xargs grep -l ""from.*itrs"" | xargs grep -l ""from.*altaz\|from.*hadec"" | head -10"
+18,18,1,0,0.0,cat /testbed/astropy/coordinates/builtin_frames/__init__.py
+19,19,1,0,0.0,cat /testbed/astropy/coordinates/builtin_frames/cirs_observed_transforms.py
+20,20,1,0,0.0,"cp /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py.bak && echo ""# New transformations for direct ITRS to Observed frames"" >> /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py"
+21,21,1,0,0.0,cat >> /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py
+22,22,1,0,0.0,git diff -- /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py > patch.txt
+23,23,1,0,0.0,cat patch.txt
+24,24,1,0,0.0,cp /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py.bak /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py && cat >> /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py
+25,25,1,0,0.0,git diff -- /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py > patch.txt
+26,26,1,0,0.0,tail -n 100 /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py
+27,27,1,0,0.0,"echo -e ""\n# New transformations for direct ITRS to Observed frames\nimport numpy as np\nfrom astropy import units as u\nfrom astropy.coordinates.matrix_utilities import rotation_matrix, matrix_transpose\nfrom astropy.coordinates.baseframe import frame_transform_graph\nfrom astropy.coordinates.transformations import FunctionTransformWithFiniteDifference\nfrom .altaz import AltAz\nfrom .hadec import HADec\nfrom .itrs import ITRS\nfrom .utils import PIOVER2\n\ndef itrs_to_observed_mat(observed_frame):\n\n    lon, lat, height = observed_frame.location.to_geodetic('WGS84')\n    elong = lon.to_value(u.radian)\n\n    if isinstance(observed_frame, AltAz):\n        # form ITRS to AltAz matrix\n        elat = lat.to_value(u.radian)\n        # AltAz frame is left handed\n        minus_x = np.eye(3)\n        minus_x[0][0] = -1.0\n        mat = (minus_x\n               @ rotation_matrix(PIOVER2 - elat, 'y', unit=u.radian)\n               @ rotation_matrix(elong, 'z', unit=u.radian))\n\n    else:\n        # form ITRS to HADec matrix\n        # HADec frame is left handed\n        minus_y = np.eye(3)\n        minus_y[1][1] = -1.0\n        mat = (minus_y\n               @ rotation_matrix(elong, 'z', unit=u.radian))\n    return mat\n\n@frame_transform_graph.transform(FunctionTransformWithFiniteDifference, ITRS, AltAz)\n@frame_transform_graph.transform(FunctionTransformWithFiniteDifference, ITRS, HADec)\ndef itrs_to_observed(itrs_coo, observed_frame):\n    # Trying to synchronize the obstimes here makes no sense. In fact,\n    # it's a real gotcha as doing an ITRS->ITRS transform references \n    # ITRS coordinates, which should be tied to the Earth, to the SSB.\n    # Instead, we treat ITRS coordinates as time invariant here.\n\n    # form the Topocentric ITRS position\n    topocentric_itrs_repr = (itrs_coo.cartesian\n                             - observed_frame.location.get_itrs().cartesian)\n    rep = topocentric_itrs_repr.transform(itrs_to_observed_mat(observed_frame))\n    return observed_frame.realize_frame(rep)\n\n@frame_transform_graph.transform(FunctionTransformWithFiniteDifference, AltAz, ITRS)\n@frame_transform_graph.transform(FunctionTransformWithFiniteDifference, HADec, ITRS)\ndef observed_to_itrs(observed_coo, itrs_frame):\n                                              \n    # form the Topocentric ITRS position\n    topocentric_itrs_repr = observed_coo.cartesian.transform(matrix_transpose(\n                            itrs_to_observed_mat(observed_coo)))\n    # form the Geocentric ITRS position\n    rep = topocentric_itrs_repr + observed_coo.location.get_itrs().cartesian\n    return itrs_frame.realize_frame(rep)"" >> /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py"
+28,28,1,0,0.0,git diff -- /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py > patch.txt
+29,29,1,0,0.0,tail -n 100 /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py
+30,30,1,1,1.0,diff -u /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py.bak /testbed/astropy/coordinates/builtin_frames/intermediate_rotation_transforms.py > patch.txt
+31,31,1,0,0.0,cat patch.txt
+32,32,1,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

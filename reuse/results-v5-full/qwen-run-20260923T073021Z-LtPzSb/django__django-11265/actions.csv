@@ -1,0 +1,68 @@
+call_index,step,action,returncode,orig_returncode,command
+1,1,1,0,0,"find /testbed -type f -name ""query.py"" | grep -v ""__pycache__"""
+2,2,1,0,0,"find /testbed -type f -exec grep -l ""FilteredRelation"" {} \; | grep -v ""__pycache__"""
+3,3,1,0,0,"grep -n ""class FilteredRelation"" /testbed/django/db/models/query_utils.py -A 20"
+4,4,1,0,0,"grep -n ""def split_exclude"" /testbed/django/db/models/sql/query.py -A 20"
+5,5,1,0,0,"grep -n ""def build_filter"" /testbed/django/db/models/sql/query.py -A 10"
+6,6,1,0,0,"grep -n ""def solve_lookup_type"" /testbed/django/db/models/sql/query.py -A 10"
+7,7,1,0,0,"grep -n ""def names_to_path"" /testbed/django/db/models/sql/query.py -A 15"
+8,8,1,0,0,"grep -n ""FilteredRelation"" /testbed/django/db/models/sql/query.py | head -20"
+9,9,1,0,0,"grep -n ""def build_filtered_relation_q"" /testbed/django/db/models/sql/query.py -A 30"
+10,10,1,0,0,"grep -n ""def add_filtered_relation"" /testbed/django/db/models/sql/query.py -A 20"
+11,11,1,0,0,"grep -n ""_filtered_relations"" /testbed/django/db/models/sql/query.py"
+12,12,1,0,0,"grep -n ""def names_to_path"" /testbed/django/db/models/sql/query.py -A 50"
+13,13,1,0,0,"grep -n ""def split_exclude"" /testbed/django/db/models/sql/query.py -A 50"
+14,14,1,0,0,"grep -n ""class Query"" /testbed/django/db/models/sql/query.py -A 10"
+15,15,1,1,1,"grep -n ""def __init__"" /testbed/django/db/models/sql/query.py | grep -A 5 ""class Query"""
+16,16,1,1,1,"grep -A 30 ""def __init__"" /testbed/django/db/models/sql/query.py | grep -B 30 ""class Query"""
+17,17,1,0,0,"grep -n -A 50 ""class Query"" /testbed/django/db/models/sql/query.py | grep -A 20 ""def __init__"""
+18,18,1,0,0,"grep -n ""def clone"" /testbed/django/db/models/sql/query.py"
+19,19,1,0,0,"grep -n -A 30 ""def clone"" /testbed/django/db/models/sql/query.py | grep -B 5 ""def clone"""
+20,20,1,0,0,"grep -n -A 50 ""def clone"" /testbed/django/db/models/sql/query.py | grep -A 20 ""class Query"""
+21,21,1,0,0,"grep -n -A 100 ""def clone"" /testbed/django/db/models/sql/query.py | grep -A 50 ""obj.__dict__ = self.__dict__.copy()"""
+22,22,1,0,0,"grep -n -A 20 ""query = Query"" /testbed/django/db/models/sql/query.py"
+23,23,1,0,0,"grep -n -A 10 ""def split_exclude"" /testbed/django/db/models/sql/query.py | head -30"
+24,24,1,0,0,"mkdir -p /testbed/reproduction && cat > /testbed/reproduction/test_filtered_relation_exclude.py << 'EOL'
+# Script to reproduce the FilteredRelation exclude issue
+from django.db import models
+from django.db.models import Q, FilteredRelation
+
+class Book(models.Model):
+    title = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.title
+
+class Author(models.Model):
+    name = models.CharField(max_length=100)
+    books = models.ManyToManyField(Book, related_name='authors')
+
+    def __str__(self):
+        return self.name
+
+# Create test data
+author1 = Author.objects.create(name='Author 1')
+author2 = Author.objects.create(name='Author 2')
+
+book1 = Book.objects.create(title='Poem by Alice')
+book2 = Book.objects.create(title='Another Book')
+
+author1.books.add(book1)
+author2.books.add(book2)
+
+# This works
+result1 = Author.objects.annotate(
+    book_alice=FilteredRelation('books', condition=Q(books__title__iexact='poem by alice'))
+).filter(book_alice__isnull=False)
+
+print(f""Filter result: {list(result1)}"")
+
+# This should work but currently fails
+try:
+    result2 = Author.objects.annotate(
+        book_alice=FilteredRelation('books', condition=Q(books__title__iexact='poem by alice'))
+    ).exclude(book_alice__isnull=False)
+    print(f""Exclude result: {list(result2)}"")
+except Exception as e:
+    print(f""Error: {type(e).__name__}: {e}"")
+EOL"

@@ -1,0 +1,402 @@
+call_index,step,action,returncode,orig_returncode,command
+1,1,1,0,0,ls -R /testbed
+2,2,1,0,0,cat /testbed/django/core/mail/message.py
+3,3,1,0,0,cat /testbed/django/core/mail/utils.py
+4,4,1,1,1,"cat /testbed/tests/mail/tests.py | grep -A 20 ""test_unicode_dns"""
+5,5,1,1,1,"grep -n ""test_unicode_dns"" /testbed/tests/mail/tests.py"
+6,6,1,0,0,head -n 50 /testbed/tests/mail/tests.py
+7,7,1,0,0,"grep -n ""unicode"" /testbed/tests/mail/tests.py"
+8,8,1,0,0,"sed -n '295,310p' /testbed/tests/mail/tests.py"
+9,9,1,0,0,"sed -n '320,340p' /testbed/tests/mail/tests.py"
+10,11,1,0,0,"echo ""from unittest.mock import patch\nfrom django.core.mail import EmailMessage\n\n# Patch DNS_NAME to simulate a unicode hostname\nwith patch('django.core.mail.utils.DNS_NAME', '漢字'):\n    email = EmailMessage('subject', '', 'from@example.com', ['to@example.com'])\n    email.encoding = 'iso-8859-1'\n    try:\n        message = email.message()\n        print('Message created successfully')\n        print('Message-ID:', message['Message-ID'])\n    except Exception as e:\n        print(f'Error: {type(e).__name__}: {e}')"" > reproduce_issue.py"
+11,12,1,1,1,cd /testbed && python reproduce_issue.py
+12,13,1,0,0,"cat > /testbed/reproduce_issue.py << 'EOL'
+from unittest.mock import patch
+from django.core.mail import EmailMessage
+
+# Patch DNS_NAME to simulate a unicode hostname
+with patch('django.core.mail.utils.DNS_NAME', '漢字'):
+    email = EmailMessage('subject', '', 'from@example.com', ['to@example.com'])
+    email.encoding = 'iso-8859-1'
+    try:
+        message = email.message()
+        print('Message created successfully')
+        print('Message-ID:', message['Message-ID'])
+    except Exception as e:
+        print(f'Error: {type(e).__name__}: {e}')
+EOL"
+13,14,1,0,0,cd /testbed && python reproduce_issue.py
+14,15,1,0,0,"cat > /testbed/reproduce_issue.py << 'EOL'
+import os
+import django
+from unittest.mock import patch
+from django.core.mail import EmailMessage
+
+# Configure Django settings
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'tests.settings')
+django.setup()
+
+# Patch DNS_NAME to simulate a unicode hostname
+with patch('django.core.mail.utils.DNS_NAME', '漢字'):
+    email = EmailMessage('subject', '', 'from@example.com', ['to@example.com'])
+    email.encoding = 'iso-8859-1'
+    try:
+        message = email.message()
+        print('Message created successfully')
+        print('Message-ID:', message['Message-ID'])
+    except Exception as e:
+        print(f'Error: {type(e).__name__}: {e}')
+EOL"
+15,16,1,1,1,cd /testbed && python reproduce_issue.py
+16,17,1,0,0,"find /testbed/tests -name ""settings.py"" | head -5"
+17,18,1,2,2,ls /testbed/tests/settings*.py
+18,19,1,0,0,cat /testbed/setup.cfg
+19,20,1,0,0,"find /testbed -name ""pytest.ini"" -o -name ""tox.ini"" | xargs cat"
+20,21,1,1,1,"cat /testbed/runtests.py | grep -A 10 ""DJANGO_SETTINGS_MODULE"""
+21,22,1,0,0,"find /testbed -name ""runtests.py"""
+22,23,1,0,0,"cat /testbed/tests/runtests.py | grep -A 10 ""DJANGO_SETTINGS_MODULE"""
+23,24,1,0,0,"cat > /testbed/reproduce_issue.py << 'EOL'
+import os
+import django
+from unittest.mock import patch
+from django.core.mail import EmailMessage
+
+# Configure Django settings
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_sqlite')
+django.setup()
+
+# Patch DNS_NAME to simulate a unicode hostname
+with patch('django.core.mail.utils.DNS_NAME', '漢字'):
+    email = EmailMessage('subject', '', 'from@example.com', ['to@example.com'])
+    email.encoding = 'iso-8859-1'
+    try:
+        message = email.message()
+        print('Message created successfully')
+        print('Message-ID:', message['Message-ID'])
+    except Exception as e:
+        print(f'Error: {type(e).__name__}: {e}')
+EOL"
+24,25,1,1,1,cd /testbed && python reproduce_issue.py
+25,26,1,0,0,"find /testbed/tests -name ""test_sqlite.py"""
+26,27,1,0,0,head -n 20 /testbed/tests/test_sqlite.py
+27,28,1,0,0,"cat > /testbed/reproduce_issue.py << 'EOL'
+import os
+import sys
+import django
+from unittest.mock import patch
+from django.core.mail import EmailMessage
+
+# Add the tests directory to the path
+sys.path.append('/testbed/tests')
+
+# Configure Django settings
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_sqlite')
+django.setup()
+
+# Patch DNS_NAME to simulate a unicode hostname
+with patch('django.core.mail.utils.DNS_NAME', '漢字'):
+    email = EmailMessage('subject', '', 'from@example.com', ['to@example.com'])
+    email.encoding = 'iso-8859-1'
+    try:
+        message = email.message()
+        print('Message created successfully')
+        print('Message-ID:', message['Message-ID'])
+    except Exception as e:
+        print(f'Error: {type(e).__name__}: {e}')
+EOL"
+28,29,1,0,0,cd /testbed && python reproduce_issue.py
+29,30,1,0,0,"cat > /testbed/reproduce_issue.py << 'EOL'
+import os
+import sys
+import django
+from unittest.mock import patch
+from django.core.mail import EmailMessage
+from django.core.mail.message import make_msgid
+
+# Add the tests directory to the path
+sys.path.append('/testbed/tests')
+
+# Configure Django settings
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_sqlite')
+django.setup()
+
+# Test make_msgid directly with a unicode domain
+try:
+    msgid = make_msgid(domain='漢字')
+    print('make_msgid succeeded:', msgid)
+except Exception as e:
+    print(f'make_msgid failed: {type(e).__name__}: {e}')
+
+# Now test with the email message
+with patch('django.core.mail.utils.DNS_NAME', '漢字'):
+    email = EmailMessage('subject', '', 'from@example.com', ['to@example.com'])
+    email.encoding = 'iso-8859-1'
+    try:
+        message = email.message()
+        print('\nEmail message created successfully')
+        print('Message-ID:', message['Message-ID'])
+    except Exception as e:
+        print(f'\nEmail message failed: {type(e).__name__}: {e}')
+EOL"
+30,31,1,0,0,cd /testbed && python reproduce_issue.py
+31,32,1,0,0,"cat > /testbed/reproduce_issue.py << 'EOL'
+import os
+import sys
+import django
+from unittest.mock import patch
+from django.core.mail import EmailMessage
+from django.core.mail.message import make_msgid
+
+# Add the tests directory to the path
+sys.path.append('/testbed/tests')
+
+# Configure Django settings
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_sqlite')
+django.setup()
+
+# Test make_msgid directly with a unicode domain
+print('Testing make_msgid with unicode domain:')
+try:
+    msgid = make_msgid(domain='漢字')
+    print('make_msgid succeeded:', msgid)
+except Exception as e:
+    print(f'make_msgid failed: {type(e).__name__}: {e}')
+
+# Now test with the email message
+print('\nTesting EmailMessage with unicode DNS_NAME:')
+with patch('django.core.mail.utils.DNS_NAME', '漢字'):
+    email = EmailMessage('subject', '', 'from@example.com', ['to@example.com'])
+    email.encoding = 'iso-8859-1'
+    try:
+        message = email.message()
+        print('Email message created successfully')
+        print('Message-ID:', message['Message-ID'])
+        # Check if the domain in Message-ID is punycode encoded
+        if 'xn--' in message['Message-ID']:
+            print('Punycode encoding detected in Message-ID')
+        else:
+            print('No punycode encoding in Message-ID')
+    except Exception as e:
+        print(f'Email message failed: {type(e).__name__}: {e}')
+EOL"
+32,33,1,0,0,cd /testbed && python reproduce_issue.py
+33,34,1,0,0,"cat > /testbed/reproduce_issue.py << 'EOL'
+import os
+import sys
+import django
+from unittest.mock import patch
+from django.core.mail.message import EmailMessage
+
+# Add the tests directory to the path
+sys.path.append('/testbed/tests')
+
+# Configure Django settings
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_sqlite')
+django.setup()
+
+# Patch DNS_NAME to simulate a unicode hostname
+with patch('django.core.mail.utils.DNS_NAME', '漢字'):
+    email = EmailMessage('subject', '', 'from@example.com', ['to@example.com'])
+    email.encoding = 'iso-8859-1'
+    try:
+        # This should trigger the error when creating the Message-ID header
+        message = email.message()
+        print('SUCCESS: Message created with Message-ID:', message['Message-ID'])
+    except Exception as e:
+        print(f'FAILURE: {type(e).__name__}: {e}')
+        import traceback
+        traceback.print_exc()
+EOL"
+34,35,1,0,0,cd /testbed && python reproduce_issue.py
+35,36,1,1,1,"grep -A 20 ""def make_msgid"" /testbed/django/core/mail/message.py"
+36,37,1,0,0,"grep -n ""make_msgid"" /testbed/django/core/mail/message.py"
+37,38,1,0,0,"python -c ""import email.utils; help(email.utils.make_msgid)"""
+38,39,1,0,0,"cat > /testbed/reproduce_issue.py << 'EOL'
+import os
+import sys
+import django
+from unittest.mock import patch, MagicMock
+from django.core.mail.message import EmailMessage, make_msgid
+
+# Add the tests directory to the path
+sys.path.append('/testbed/tests')
+
+# Configure Django settings
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_sqlite')
+django.setup()
+
+# First, let\'s see what make_msgid returns with a unicode domain
+print(""make_msgid result:"", make_msgid(domain='漢字'))
+
+# Now, let\'s trace through the EmailMessage.message() method
+with patch('django.core.mail.utils.DNS_NAME', '漢字'):
+    email = EmailMessage('subject', '', 'from@example.com', ['to@example.com'])
+    email.encoding = 'iso-8859-1'
+    
+    # Let\'s see what happens when we set the Message-ID header
+    try:
+        msg = email.message()
+        print(""\nSUCCESS: Message created with Message-ID:"", msg['Message-ID'])
+        
+        # Let\'s also check if there are any non-ASCII characters in the Message-ID
+        msgid = msg['Message-ID']
+        try:
+            msgid.encode('ascii')
+            print(""Message-ID is ASCII compatible"")
+        except UnicodeEncodeError as e:
+            print(f""Message-ID has non-ASCII characters: {e}"")
+            
+    except Exception as e:
+        print(f""\nFAILURE: {type(e).__name__}: {e}"")
+        import traceback
+        traceback.print_exc()
+EOL"
+39,40,1,1,1,cd /testbed && python reproduce_issue.py
+40,41,1,0,0,"python -c ""import inspect; import email.utils; print(inspect.getsource(email.utils.make_msgid))"""
+41,42,1,1,1,"python -c ""print('IDNA encoding of 漢字:', '漢字'.encode('idna').decode('ascii'))"""
+42,43,1,1,1,"python -c ""print('IDNA encoding of 漢字:', '漢字'.encode('idna'))"""
+43,44,1,0,0,"cat > /testbed/test_idna.py << 'EOL'
+# Test IDNA encoding
+try:
+    # Test encoding a unicode domain to punycode
+    unicode_domain = '漢字'
+    punycode_domain = unicode_domain.encode('idna').decode('ascii')
+    print(f""Unicode domain '{unicode_domain}' -> Punycode '{punycode_domain}'"")
+    
+    # Test with a more complex example
+    unicode_domain = 'bücher.example.com'
+    punycode_domain = unicode_domain.encode('idna').decode('ascii')
+    print(f""Unicode domain '{unicode_domain}' -> Punycode '{punycode_domain}'"")
+    
+except Exception as e:
+    print(f""Error: {type(e).__name__}: {e}"")
+EOL"
+44,45,1,0,0,cd /testbed && python test_idna.py
+45,46,1,0,0,"cat > /testbed/test_idna.py << 'EOL'
+# Test IDNA encoding
+try:
+    # Test encoding a unicode domain to punycode
+    unicode_domain = 'xn--flw305m'  # This is the expected punycode for '漢字'
+    # Let's try to encode properly
+    import codecs
+    punycode_domain = codecs.encode('漢字', 'idna').decode('ascii')
+    print(f""Unicode domain '漢字' -> Punycode '{punycode_domain}'"")
+    
+    # Test with a more complex example
+    punycode_domain = codecs.encode('bücher.example.com', 'idna').decode('ascii')
+    print(f""Unicode domain 'bücher.example.com' -> Punycode '{punycode_domain}'"")
+    
+except Exception as e:
+    print(f""Error: {type(e).__name__}: {e}"")
+EOL"
+46,47,1,0,0,cd /testbed && python test_idna.py
+47,48,1,1,1,"python -c ""import codecs; print([enc for enc in codecs.getencodings() if 'idna' in enc])"""
+48,49,1,0,0,"python -c ""import encodings; print('idna' in dir(encodings))"""
+49,50,1,0,0,"python -c ""import encodings.idna; print('IDNA encoding module found')"""
+50,51,1,1,1,"python -c ""import encodings.idna; result = '漢字'.encode('idna'); print(f'Encoded: {result}, Decoded: {result.decode(\""ascii\"")}')"""
+51,52,1,0,0,"cat > /testbed/test_idna.py << 'EOL'
+# Test IDNA encoding
+try:
+    # Test encoding a unicode domain to punycode
+    unicode_domain = '漢字'
+    # Using the idna encoding directly
+    punycode_bytes = unicode_domain.encode('idna')
+    punycode_domain = punycode_bytes.decode('ascii')
+    print(f""Unicode domain '{unicode_domain}' -> Punycode '{punycode_domain}'"")
+    
+    # Test with a more complex example
+    unicode_domain = 'bücher.example.com'
+    punycode_bytes = unicode_domain.encode('idna')
+    punycode_domain = punycode_bytes.decode('ascii')
+    print(f""Unicode domain '{unicode_domain}' -> Punycode '{punycode_domain}'"")
+    
+except Exception as e:
+    print(f""Error: {type(e).__name__}: {e}"")
+EOL"
+52,53,1,0,0,cd /testbed && python test_idna.py
+53,54,1,0,0,"cat > /testbed/test_idna.py << 'EOL'
+# Test IDNA encoding
+try:
+    # Test encoding a unicode domain to punycode using unicode escape
+    unicode_domain = '\u6f22\u5b57'  # This is '漢字' in unicode escape
+    print(f""Testing with unicode domain: {unicode_domain}"")
+    
+    # Using the idna encoding directly
+    punycode_bytes = unicode_domain.encode('idna')
+    punycode_domain = punycode_bytes.decode('ascii')
+    print(f""Unicode domain '{unicode_domain}' -> Punycode '{punycode_domain}'"")
+    
+    # Test with a more complex example
+    unicode_domain = 'bücher.example.com'
+    punycode_bytes = unicode_domain.encode('idna')
+    punycode_domain = punycode_bytes.decode('ascii')
+    print(f""Unicode domain '{unicode_domain}' -> Punycode '{punycode_domain}'"")
+    
+except Exception as e:
+    print(f""Error: {type(e).__name__}: {e}"")
+EOL"
+54,55,1,0,0,cd /testbed && python test_idna.py
+55,56,1,0,0,"grep -n -A 5 -B 5 ""make_msgid"" /testbed/django/core/mail/message.py"
+56,57,1,0,0,cat /testbed/django/core/mail/utils.py
+57,58,1,0,0,"cat > /testbed/django/core/mail/utils.py << 'EOL'
+""""""
+Email message and email sending related helper functions.
+""""""
+
+import socket
+
+
+# Cache the hostname, but do it lazily: socket.getfqdn() can take a couple of
+# seconds, which slows down the restart of the server.
+class CachedDnsName:
+    def __str__(self):
+        return self.get_fqdn()
+
+    def get_fqdn(self):
+        if not hasattr(self, '_fqdn'):
+            self._fqdn = socket.getfqdn()
+        # Encode to IDNA format (punycode) for use in email headers
+        return self._fqdn.encode('idna').decode('ascii')
+
+
+DNS_NAME = CachedDnsName()
+EOL"
+58,59,1,0,0,"cat > /testbed/test_fix.py << 'EOL'
+import os
+import sys
+import django
+from unittest.mock import patch
+from django.core.mail.message import EmailMessage, make_msgid
+
+# Add the tests directory to the path
+sys.path.append('/testbed/tests')
+
+# Configure Django settings
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_sqlite')
+django.setup()
+
+# Test with a patched DNS_NAME that returns a unicode string
+with patch('django.core.mail.utils.DNS_NAME.get_fqdn', return_value='漢字'):
+    # Create an email with iso-8859-1 encoding
+    email = EmailMessage('subject', '', 'from@example.com', ['to@example.com'])
+    email.encoding = 'iso-8859-1'
+    
+    try:
+        message = email.message()
+        print(""SUCCESS: Message created with Message-ID:"", message['Message-ID'])
+        
+        # Check if the Message-ID contains the punycode version
+        msgid = message['Message-ID']
+        if 'xn--' in msgid:
+            print(""Punycode encoding detected in Message-ID - fix is working"")
+        else:
+            print(""No punycode encoding in Message-ID - fix may not be working"")
+            
+    except Exception as e:
+        print(f""FAILURE: {type(e).__name__}: {e}"")
+        import traceback
+        traceback.print_exc()
+EOL"
+59,60,1,0,0,cd /testbed && python test_fix.py
+60,61,1,2,2,"cp /testbed/django/core/mail/message.py /testbed/django/core/mail/message.py.bak && sed -i '/msg[\'Message-ID\'] = make_msgid(domain=DNS_NAME)/c\            # Use cached DNS_NAME for performance, encoded to IDNA format for international domains\n            domain = DNS_NAME.encode(\'idna\').decode(\'ascii\') if isinstance(DNS_NAME, str) else str(DNS_NAME).encode(\'idna\').decode(\'ascii\')\n            msg[\'Message-ID\'] = make_msgid(domain=domain)' /testbed/django/core/mail/message.py"
+61,62,1,0,0,cp /testbed/django/core/mail/message.py /testbed/django/core/mail/message.py.bak
