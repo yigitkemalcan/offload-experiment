@@ -1,0 +1,534 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1033611428317334,1033611698083272,0,0.0,ls -la
+1,1,2,1033611698100374,1033612386018300,0,0.0,"find . -type f -name ""*.py"" | grep -i admin"
+2,1,3,1033612386022638,1033612697443193,0,0.0,"find . -type f -name ""*.py"" | grep -i json"
+3,2,1,1033612697452430,1033612880976678,0,0.0,"cat django/contrib/admin/utils.py | grep -A 20 -B 5 ""display_for_field"""
+4,2,2,1033612880985565,1033613065143574,0,0.0,cat django/db/models/fields/json.py
+5,3,1,1033613065147392,1033613346667862,1,1.0,"grep -r ""prepare_value"" django/contrib/admin/"
+6,4,1,1033613346677340,1033613723861938,0,0.0,"find django -type f -name ""*.py"" | xargs grep -l ""class JSONField"""
+7,5,1,1033613723870774,1033613913624269,0,0.0,"grep -A 30 ""class JSONField"" django/forms/fields.py"
+8,6,1,1033613913633767,1033614101710027,0,0.0,"grep -A 10 ""prepare_value"" django/forms/fields.py"
+9,7,1,1033614101725877,1033614286540731,0,0.0,"cat django/contrib/admin/utils.py | grep -A 50 ""def display_for_field"""
+10,8,1,1033614286560167,1033614474224621,0,0.0,"mkdir -p test_project && cat > test_project/models.py << 'EOL'
+from django.db import models
+
+class TestModel(models.Model):
+    json_data = models.JSONField()
+    
+    def __str__(self):
+        return f""TestModel {self.id}""
+EOL"
+11,9,1,1033614474240701,1033614663790636,0,0.0,"cat > test_project/admin.py << 'EOL'
+from django.contrib import admin
+from .models import TestModel
+
+class TestModelAdmin(admin.ModelAdmin):
+    readonly_fields = ['json_data']
+
+admin.site.register(TestModel, TestModelAdmin)
+EOL"
+12,10,1,1033614663803440,1033614849281069,0,0.0,"cat > test_project/manage.py << 'EOL'
+#!/usr/bin/env python
+import os
+import django
+from django.conf import settings
+from django.core.management import execute_from_command_line
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        SECRET_KEY='test-key',
+        ROOT_URLCONF=__name__,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.admin',
+            'django.contrib.auth',
+            'django.contrib.contenttypes',
+            'django.contrib.sessions',
+            'test_project',
+        ],
+        MIDDLEWARE=[
+            'django.contrib.sessions.middleware.SessionMiddleware',
+            'django.contrib.auth.middleware.AuthenticationMiddleware',
+        ],
+        TEMPLATES=[
+            {
+                'BACKEND': 'django.template.backends.django.DjangoTemplates',
+                'APP_DIRS': True,
+            },
+        ],
+    )
+
+if __name__ == '__main__':
+    django.setup()
+    execute_from_command_line()
+EOL"
+13,11,1,1033614849293812,1033615039511754,0,0.0,"chmod +x test_project/manage.py && cat > test_project/test_json_display.py << 'EOL'
+import os
+import sys
+import django
+
+# Add the test_project directory to the path
+sys.path.append('test_project')
+
+# Setup Django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'test_project.manage')
+import django
+django.setup()
+
+# Create and save a test instance
+from test_project.models import TestModel
+
+test_obj = TestModel(json_data={""foo"": ""bar""})
+test_obj.save()
+
+# Print the raw value and its string representation
+cprint(f""Raw value: {test_obj.json_data}"")
+print(f""String representation: {str(test_obj.json_data)}"")
+print(f""Type: {type(test_obj.json_data)}"")
+
+# Note: To fully test the admin display, you would need to run:
+# python test_project/manage.py createsuperuser
+# python test_project/manage.py runserver
+# Then visit /admin/test_project/testmodel/add/ to see the display issue
+EOL"
+14,12,1,1033615039527153,1033615234084088,0,0.0,"cp django/contrib/admin/utils.py django/contrib/admin/utils.py.bak && sed -i ""/from django.contrib.admin.templatetags.admin_list import _boolean_icon/a from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i ""s/elif isinstance(field, models.FileField) and value:/elif isinstance(field, models.FileField) and value:\\n    elif isinstance(field, JSONField):\\n        return FormJSONField().prepare_value(value)/"" django/contrib/admin/utils.py"
+15,13,1,1033615234099677,1033615425694110,1,1.0,diff django/contrib/admin/utils.py.bak django/contrib/admin/utils.py
+16,14,1,1033615425703698,1033615615750855,0,0.0,"cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && sed -i ""381i from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i ""s/elif isinstance(field, models.FileField) and value:/elif isinstance(field, models.FileField) and value:\\n    elif isinstance(field, JSONField):\\n        return FormJSONField().prepare_value(value)/"" django/contrib/admin/utils.py && grep -A 10 ""display_for_field"" django/contrib/admin/utils.py"
+17,15,1,1033615615763038,1033615815194273,0,0.0,"cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && sed -i ""/from django.contrib.admin.templatetags.admin_list import _boolean_icon/a from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i ""s/elif isinstance(field, models.FileField) and value:/elif isinstance(field, models.FileField) and value:\\n    elif isinstance(field, JSONField):\\n        return FormJSONField().prepare_value(value)/"" django/contrib/admin/utils.py && grep -B 5 -A 20 ""def display_for_field"" django/contrib/admin/utils.py"
+18,16,1,1033615815207137,1033616011577135,0,0.0,"cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && sed -i ""/from django import forms/a from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i ""s/elif isinstance(field, models.FileField) and value:/elif isinstance(field, models.FileField) and value:\\n    elif isinstance(field, JSONField):\\n        return FormJSONField().prepare_value(value)/"" django/contrib/admin/utils.py && head -40 django/contrib/admin/utils.py | tail -10"
+19,17,1,1033616011593096,1033616201660976,1,1.0,"grep -A 10 ""from django import forms"" django/contrib/admin/utils.py"
+20,18,1,1033616201672938,1033616392046586,0,0.0,"grep -n ""from django"" django/contrib/admin/utils.py | head -10"
+21,19,1,1033616392060322,1033616586055229,0,0.0,"cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && sed -i ""14i from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i ""s/elif isinstance(field, models.FileField) and value:/elif isinstance(field, models.FileField) and value:\\n    elif isinstance(field, JSONField):\\n        return FormJSONField().prepare_value(value)/"" django/contrib/admin/utils.py && grep -A 5 ""from django.forms import JSONField"" django/contrib/admin/utils.py && grep -B 5 -A 10 ""elif isinstance(field, JSONField)"" django/contrib/admin/utils.py"
+22,20,1,1033616586066700,1033616784672034,0,0.0,"cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && sed -i ""14i from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i ""s/elif isinstance(field, models.FileField) and value:/elif isinstance(field, models.FileField) and value:\\n    elif isinstance(field, JSONField):\\n        return FormJSONField().prepare_value(value)/"" django/contrib/admin/utils.py && cat django/contrib/admin/utils.py | grep -A 30 ""def display_for_field"" | grep -B 5 ""elif isinstance(field, JSONField)"""
+23,21,1,1033616784688074,1033616970813564,0,0.0,"cat > /tmp/utils_patch.py << 'EOL'
+# Get the content before the function
+head -$(($(grep -n ""def display_for_field"" django/contrib/admin/utils.py | cut -d: -f1) + 1)) django/contrib/admin/utils.py > django/contrib/admin/utils.py.new
+
+cat >> django/contrib/admin/utils.py.new << 'EOF'
+    if getattr(field, 'flatchoices', None):
+        return dict(field.flatchoices).get(value, empty_value_display)
+    # BooleanField needs special-case null-handling, so it comes before the
+    # general null test.
+    elif isinstance(field, models.BooleanField):
+        return _boolean_icon(value)
+    elif value is None:
+        return empty_value_display
+    elif isinstance(field, models.DateTimeField):
+        return formats.localize(timezone.template_localtime(value))
+    elif isinstance(field, (models.DateField, models.TimeField)):
+        return formats.localize(value)
+    elif isinstance(field, models.DecimalField):
+        return formats.number_format(value, field.decimal_places)
+    elif isinstance(field, (models.IntegerField, models.FloatField)):
+        return formats.number_format(value)
+    elif isinstance(field, models.FileField) and value:
+        return format_html('<a href=""{}"">{}</a>', value.url, value)
+    elif isinstance(field, JSONField):
+        return FormJSONField().prepare_value(value)
+    else:
+        return display_for_value(value, empty_value_display)
+
+
+def display_for_value(value, empty_value_display, boolean=False):
+EOF
+
+tail -$(($(wc -l < django/contrib/admin/utils.py) - $(grep -n ""def display_for_value"" django/contrib/admin/utils.py | cut -d: -f1) + 2)) django/contrib/admin/utils.py >> django/contrib/admin/utils.py.new
+
+# Replace the original file
+mv django/contrib/admin/utils.py.new django/contrib/admin/utils.py
+EOL"
+24,22,1,1033616970823873,1033617178826881,1,1.0,python /tmp/utils_patch.py
+25,23,1,1033617178842280,1033617492035452,0,0.0,bash /tmp/utils_patch.py
+26,24,1,1033617492045651,1033617682577125,0,0.0,"grep -A 30 ""def display_for_field"" django/contrib/admin/utils.py"
+27,25,1,1033617682590279,1033617874708619,0,0.0,"grep -n ""def display_for_value"" django/contrib/admin/utils.py"
+28,26,1,1033617874796403,1033618065474886,0,0.0,"cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && sed -i ""14i from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i ""/elif isinstance(field, models.FileField) and value:/a     elif isinstance(field, JSONField):\n        return FormJSONField().prepare_value(value)"" django/contrib/admin/utils.py"
+29,27,1,1033618065506095,1033618251775484,0,0.0,"grep -A 30 ""def display_for_field"" django/contrib/admin/utils.py"
+30,28,1,1033618251784530,1033618443973862,0,0.0,"cat > /tmp/fix_utils.py << 'EOL'
+import re
+
+def fix_admin_utils():
+    # Read the file
+    with open('django/contrib/admin/utils.py', 'r') as f:
+        content = f.read()
+    
+    # Add imports after other django imports
+    import_re = r'((from django.*\n)+)'
+    content = re.sub(import_re, r'\1from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField\n', content, count=1)
+    
+    # Find the display_for_field function and insert the JSONField check
+    func_pattern = r'(def display_for_field\(.*?:\n.*?elif isinstance\(field, models\.FileField\) and value:\n.*?return format_html\(<a href=""{}"">{}</a>.*?\))'
+    replacement = r'\1    elif isinstance(field, JSONField):\n        return FormJSONField().prepare_value(value)\n'
+    content = re.sub(func_pattern, replacement, content, flags=re.DOTALL)
+    
+    # Write the file back
+    with open('django/contrib/admin/utils.py', 'w') as f:
+        f.write(content)
+
+fix_admin_utils()
+EOL"
+31,29,1,1033618443985865,1033618661791626,0,0.0,python /tmp/fix_utils.py
+32,30,1,1033618661804039,1033618846186330,0,0.0,"grep -A 30 ""def display_for_field"" django/contrib/admin/utils.py"
+33,31,1,1033618846251477,1033619031459158,0,0.0,"cat > /tmp/fix_utils.py << 'EOL'
+import re
+
+def fix_admin_utils():
+    # Read the file
+    with open('django/contrib/admin/utils.py', 'r') as f:
+        content = f.read()
+    
+    # Add imports after other django imports
+    lines = content.split('\n')
+    new_lines = []
+    imports_added = False
+    for line in lines:
+        new_lines.append(line)
+        if line.startswith('from django.utils.translation') and not imports_added:
+            new_lines.append('from django.db.models import JSONField')
+            new_lines.append('from django.forms import JSONField as FormJSONField')
+            imports_added = True
+    
+    # Rejoin the lines
+    content = '\n'.join(new_lines)
+    
+    # Find the display_for_field function and insert the JSONField check
+    # Look for the FileField line and insert after it
+    content = content.replace(
+        '    elif isinstance(field, models.FileField) and value:\\n        return format_html(\'<a href=""{}"">{}</a>\', value.url, value)',
+        '    elif isinstance(field, models.FileField) and value:\\n        return format_html(\'<a href=""{}"">{}</a>\', value.url, value)\n    elif isinstance(field, JSONField):\n        return FormJSONField().prepare_value(value)'
+    )
+    
+    # Write the file back
+    with open('django/contrib/admin/utils.py', 'w') as f:
+        f.write(content)
+
+fix_admin_utils()
+EOL"
+34,32,1,1033619031470108,1033619240929763,0,0.0,python /tmp/fix_utils.py
+35,33,1,1033619240941856,1033619429653673,0,0.0,"grep -A 30 ""def display_for_field"" django/contrib/admin/utils.py"
+36,34,1,1033619429713129,1033619620461583,0,0.0,"cat > /tmp/fix_utils.py << 'EOL'
+import re
+
+def fix_admin_utils():
+    # Read the file
+    with open('django/contrib/admin/utils.py', 'r') as f:
+        content = f.read()
+    
+    # Add imports after other django imports
+    lines = content.split('\n')
+    new_lines = []
+    imports_added = False
+    for line in lines:
+        new_lines.append(line)
+        if line.startswith('from django.utils.translation') and not imports_added:
+            new_lines.append('from django.db.models import JSONField')
+            new_lines.append('from django.forms import JSONField as FormJSONField')
+            imports_added = True
+    
+    # Rejoin the lines
+    content = '\n'.join(new_lines)
+    
+    # Find the display_for_field function and insert the JSONField check
+    # Look for the FileField line and insert after it
+    content = content.replace(
+        '    elif isinstance(field, models.FileField) and value:\n        return format_html(\'<a href=""{}"">{}</a>\', value.url, value)',
+        '    elif isinstance(field, models.FileField) and value:\n        return format_html(\'<a href=""{}"">{}</a>\', value.url, value)\n    elif isinstance(field, JSONField):\n        return FormJSONField().prepare_value(value)'
+    )
+    
+    # Write the file back
+    with open('django/contrib/admin/utils.py', 'w') as f:
+        f.write(content)
+
+fix_admin_utils()
+EOL"
+37,35,1,1033619620470610,1033619822956610,0,0.0,python /tmp/fix_utils.py
+38,36,1,1033619822965206,1033620011006452,0,0.0,"grep -A 30 ""def display_for_field"" django/contrib/admin/utils.py"
+39,37,1,1033620011018164,1033620194633644,0,0.0,"cat > /tmp/fix_utils.py << 'EOL'
+import re
+
+def fix_admin_utils():
+    # Read the file
+    with open('django/contrib/admin/utils.py', 'r') as f:
+        lines = f.readlines()
+    
+    # Add imports after other django imports
+    new_lines = []
+    imports_added = False
+    for line in lines:
+        new_lines.append(line)
+        if line.strip().startswith('from django.utils.translation') and not imports_added:
+            new_lines.append('from django.db.models import JSONField\n')
+            new_lines.append('from django.forms import JSONField as FormJSONField\n')
+            imports_added = True
+    
+    # Find the display_for_field function and insert the JSONField check
+    # Look for the FileField line and insert after it
+    final_lines = []
+    for line in new_lines:
+        final_lines.append(line)
+        if 'elif isinstance(field, models.FileField) and value:' in line:
+            final_lines.append('    elif isinstance(field, JSONField):\n')
+            final_lines.append('        return FormJSONField().prepare_value(value)\n')
+    
+    # Write the file back
+    with open('django/contrib/admin/utils.py', 'w') as f:
+        f.writelines(final_lines)
+
+fix_admin_utils()
+EOL"
+40,38,1,1033620194637942,1033620404321146,0,0.0,python /tmp/fix_utils.py
+41,39,1,1033620404338619,1033620594829045,0,0.0,"grep -A 30 ""def display_for_field"" django/contrib/admin/utils.py"
+42,40,1,1033620594900123,1033620781779203,0,0.0,"cat > /tmp/fix_utils.py << 'EOL'
+import re
+
+def fix_admin_utils():
+    # Read the file
+    with open('django/contrib/admin/utils.py', 'r') as f:
+        lines = f.readlines()
+    
+    # Add imports after other django imports
+    new_lines = []
+    imports_added = False
+    json_imports_added = False
+    for line in lines:
+        new_lines.append(line)
+        if line.strip().startswith('from django.utils.translation') and not imports_added:
+            new_lines.append('from django.db.models import JSONField\n')
+            new_lines.append('from django.forms import JSONField as FormJSONField\n')
+            imports_added = True
+            json_imports_added = True
+    
+    # If imports were already there, don't add them again
+    if not json_imports_added:
+        new_lines = lines
+    
+    # Find the display_for_field function and insert the JSONField check
+    # Look for the FileField line and insert after it, but only if not already added
+    final_lines = []
+    json_field_added = False
+    for line in new_lines:
+        final_lines.append(line)
+        if 'elif isinstance(field, models.FileField) and value:' in line and not json_field_added:
+            # Check if the JSONField check is already in the next few lines
+            found = False
+            for i, l in enumerate(new_lines):
+                if l == line:
+                    # Look ahead up to 5 lines
+                    for j in range(1, 6):
+                        if i+j < len(new_lines) and 'elif isinstance(field, JSONField):' in new_lines[i+j]:
+                            found = True
+                            break
+                    break
+            if not found:
+                final_lines.append('    elif isinstance(field, JSONField):\n')
+                final_lines.append('        return FormJSONField().prepare_value(value)\n')
+            json_field_added = True
+    
+    # Write the file back
+    with open('django/contrib/admin/utils.py', 'w') as f:
+        f.writelines(final_lines)
+
+fix_admin_utils()
+EOL"
+43,41,1,1033620781787358,1033620992310825,0,0.0,python /tmp/fix_utils.py
+44,42,1,1033620992344448,1033621179581214,0,0.0,"grep -A 30 ""def display_for_field"" django/contrib/admin/utils.py"
+45,43,1,1033621179591724,1033621373044050,0,0.0,"cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && sed -i ""/from django.utils.translation/a from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i ""/elif isinstance(field, models.FileField) and value:/a     elif isinstance(field, JSONField):\n        return FormJSONField().prepare_value(value)"" django/contrib/admin/utils.py"
+46,44,1,1033621373106221,1033621556017087,0,0.0,"grep -A 30 ""def display_for_field"" django/contrib/admin/utils.py"
+47,45,1,1033621556033608,1033621745318954,0,0.0,"cat > /tmp/new_utils.py << 'EOL'
+# Copy everything up to the display_for_field function
+head -$(($(grep -n ""def display_for_field"" django/contrib/admin/utils.py | head -1 | cut -d: -f1) + 1)) django/contrib/admin/utils.py > temp_utils.py
+
+cat >> temp_utils.py << 'EOF'
+    if getattr(field, 'flatchoices', None):
+        return dict(field.flatchoices).get(value, empty_value_display)
+    # BooleanField needs special-case null-handling, so it comes before the
+    # general null test.
+    elif isinstance(field, models.BooleanField):
+        return _boolean_icon(value)
+    elif value is None:
+        return empty_value_display
+    elif isinstance(field, models.DateTimeField):
+        return formats.localize(timezone.template_localtime(value))
+    elif isinstance(field, (models.DateField, models.TimeField)):
+        return formats.localize(value)
+    elif isinstance(field, models.DecimalField):
+        return formats.number_format(value, field.decimal_places)
+    elif isinstance(field, (models.IntegerField, models.FloatField)):
+        return formats.number_format(value)
+    elif isinstance(field, models.FileField) and value:
+        return format_html('<a href=""{}"">{}</a>', value.url, value)
+    elif isinstance(field, JSONField):
+        return FormJSONField().prepare_value(value)
+    else:
+        return display_for_value(value, empty_value_display)
+
+
+def display_for_value(value, empty_value_display, boolean=False):
+EOF
+
+tail -$(($(wc -l < django/contrib/admin/utils.py) - $(grep -n ""def display_for_value"" django/contrib/admin/utils.py | head -1 | cut -d: -f1) + 2)) django/contrib/admin/utils.py >> temp_utils.py
+
+# Replace the original file
+mv temp_utils.py django/contrib/admin/utils.py
+EOL"
+48,46,1,1033621745323672,1033622053032677,0,0.0,bash /tmp/new_utils.py
+49,47,1,1033622053055751,1033622243510986,0,0.0,"grep -A 30 ""def display_for_field"" django/contrib/admin/utils.py"
+50,48,1,1033622243529671,1033622433821661,0,0.0,"cat > /tmp/final_fix.py << 'EOL'
+# Read the original file
+with open('django/contrib/admin/utils.py.bak', 'r') as f:
+    lines = f.readlines()
+
+# Find the import section and add our imports
+import_line_idx = -1
+for i, line in enumerate(lines):
+    if line.startswith('from django.utils.translation'):
+        import_line_idx = i
+        break
+
+# Insert our imports after the translation import
+if import_line_idx != -1:
+    lines.insert(import_line_idx + 1, 'from django.db.models import JSONField\n')
+    lines.insert(import_line_idx + 2, 'from django.forms import JSONField as FormJSONField\n')
+
+# Find the display_for_field function and modify it
+start_idx = -1
+end_idx = -1
+for i, line in enumerate(lines):
+    if line.startswith('def display_for_field'):
+        start_idx = i
+    if start_idx != -1 and line.startswith('def display_for_value') and i > start_idx:
+        end_idx = i
+        break
+
+if start_idx != -1 and end_idx != -1:
+    # Extract the function lines
+    func_lines = lines[start_idx:end_idx]
+    
+    # Find where to insert our new condition
+    file_field_idx = -1
+    for i, line in enumerate(func_lines):
+        if 'elif isinstance(field, models.FileField) and value:' in line:
+            file_field_idx = i
+            break
+    
+    if file_field_idx != -1:
+        # Insert our new condition after the FileField condition
+        func_lines.insert(file_field_idx + 1, '    elif isinstance(field, JSONField):\n')
+        func_lines.insert(file_field_idx + 2, '        return FormJSONField().prepare_value(value)\n')
+    
+    # Replace the old function with the modified one
+    lines = lines[:start_idx] + func_lines + lines[end_idx:]
+
+# Write the modified content back
+with open('django/contrib/admin/utils.py', 'w') as f:
+    f.writelines(lines)
+EOL"
+51,49,1,1033622433831559,1033622631096434,0,0.0,python /tmp/final_fix.py
+52,50,1,1033622631102826,1033622815678278,0,0.0,"grep -A 30 ""def display_for_field"" django/contrib/admin/utils.py"
+53,51,1,1033622815690912,1033623009279747,0,0.0,"cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && sed -i ""/from django.utils.translation/a from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i ""/elif isinstance(field, models.FileField) and value:/i     elif isinstance(field, JSONField):\n        return FormJSONField().prepare_value(value)"" django/contrib/admin/utils.py"
+54,52,1,1033623009283554,1033623191006475,0,0.0,"grep -A 30 ""def display_for_field"" django/contrib/admin/utils.py"
+55,53,1,1033623191016033,1033623380383677,0,0.0,"grep -n ""JSONField"" django/contrib/admin/utils.py | head -5"
+56,54,1,1033623380404215,1033623588561446,0,0.0,git diff -- django/contrib/admin/utils.py > patch.txt
+57,55,1,1033623588574110,1033623772352767,0,0.0,cat patch.txt
+58,56,1,1033623772445911,1033623968837706,0,0.0,"cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && sed -i ""/from django.utils.translation/a from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i ""/elif isinstance(field, models.FileField) and value:/i     elif isinstance(field, JSONField):\n        return FormJSONField().prepare_value(value)"" django/contrib/admin/utils.py && git diff -- django/contrib/admin/utils.py > patch.txt && cat patch.txt"
+59,57,1,1033623968848476,1033624163946898,0,0.0,"cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && sed -i ""/from django.utils.translation/a from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i ""s/    elif isinstance(field, (models.IntegerField, models.FloatField)):.*\n/    elif isinstance(field, (models.IntegerField, models.FloatField)):\n        return formats.number_format(value)\n    elif isinstance(field, JSONField):\n        return FormJSONField().prepare_value(value)\n/"" django/contrib/admin/utils.py && git diff -- django/contrib/admin/utils.py > patch.txt && cat patch.txt"
+60,58,1,1033624163955444,1033624355130829,0,0.0,"cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && cat >> django/contrib/admin/utils.py << 'EOL'
+# This is a marker to find the end of the file
+MARKER_END_OF_FILE
+EOL"
+61,59,1,1033624355143162,1033624561102828,0,0.0,"sed -i '/MARKER_END_OF_FILE/d' django/contrib/admin/utils.py && cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && sed -i ""/from django.utils.translation/a from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i '/elif isinstance(field, (models.IntegerField, models.FloatField)):/a     elif isinstance(field, JSONField):\n        return FormJSONField().prepare_value(value)' django/contrib/admin/utils.py && git diff -- django/contrib/admin/utils.py > patch.txt && cat patch.txt"
+62,60,1,1033624561120631,1033624751355324,0,0.0,"cat > /tmp/fix_indentation.py << 'EOL'
+# Read the file
+with open('django/contrib/admin/utils.py', 'r') as f:
+    lines = f.readlines()
+
+# Find and fix the imports
+import_line_idx = -1
+for i, line in enumerate(lines):
+    if line.startswith('from django.utils.translation'):
+        import_line_idx = i
+        break
+
+if import_line_idx != -1:
+    # Check if our imports are already there
+    has_json_imports = False
+    for j in range(import_line_idx + 1, min(import_line_idx + 5, len(lines))):
+        if 'from django.db.models import JSONField' in lines[j]:
+            has_json_imports = True
+            break
+    
+    if not has_json_imports:
+        lines.insert(import_line_idx + 1, 'from django.db.models import JSONField\n')
+        lines.insert(import_line_idx + 2, 'from django.forms import JSONField as FormJSONField\n')
+
+# Find and fix the display_for_field function
+start_idx = -1
+for i, line in enumerate(lines):
+    if line.startswith('def display_for_field'):
+        start_idx = i
+        break
+
+if start_idx != -1:
+    # Find the FileField line
+    file_field_idx = -1
+    for i in range(start_idx, len(lines)):
+        if 'elif isinstance(field, models.FileField) and value:' in lines[i]:
+            file_field_idx = i
+            break
+    
+    if file_field_idx != -1:
+        # Check if the JSONField line is already there
+        has_json_field = False
+        for i in range(file_field_idx - 2, file_field_idx):
+            if 'elif isinstance(field, JSONField):' in lines[i]:
+                has_json_field = True
+                break
+        
+        if not has_json_field:
+            # Insert the JSONField check before the FileField check
+            lines.insert(file_field_idx, '    elif isinstance(field, JSONField):\n')
+            lines.insert(file_field_idx + 1, '        return FormJSONField().prepare_value(value)\n')
+
+# Write the file back
+with open('django/contrib/admin/utils.py', 'w') as f:
+    f.writelines(lines)
+
+# Create the patch
+import subprocess
+subprocess.run(['git', 'diff', '--', 'django/contrib/admin/utils.py'], stdout=open('patch.txt', 'w'))
+EOL"
+63,61,1,1033624751362016,1033624976167880,0,0.0,python /tmp/fix_indentation.py
+64,62,1,1033624976176406,1033625160076414,0,0.0,cat patch.txt
+65,63,1,1033625160094748,1033625362240877,0,0.0,"cp django/contrib/admin/utils.py.bak django/contrib/admin/utils.py && sed -i ""/from django.utils.translation/a from django.db.models import JSONField\nfrom django.forms import JSONField as FormJSONField"" django/contrib/admin/utils.py && sed -i '/elif isinstance(field, (models.IntegerField, models.FloatField)):/a     elif isinstance(field, JSONField):\n        return FormJSONField().prepare_value(value)' django/contrib/admin/utils.py && sed -i '/elif isinstance(field, JSONField):/d' django/contrib/admin/utils.py && sed -i '/elif isinstance(field, (models.IntegerField, models.FloatField)):/a     elif isinstance(field, JSONField):\n        return FormJSONField().prepare_value(value)' django/contrib/admin/utils.py && git diff -- django/contrib/admin/utils.py > patch.txt && cat patch.txt"
+66,64,1,1033625362258350,1033625563448091,0,0.0,"rm -f patch.txt && git diff -- django/contrib/admin/utils.py > /tmp/patch.txt && cat /tmp/patch.txt | sed 's/+elif isinstance(field, JSONField):/    elif isinstance(field, JSONField):/' | sed 's/+        return FormJSONField().prepare_value(value)/        return FormJSONField().prepare_value(value)/' > patch.txt && cat patch.txt"
+67,65,1,1033625563466054,1033625744450863,2,2.0,"echo ""diff --git a/django/contrib/admin/utils.py b/django/contrib/admin/utils.py\nindex e4ddc8f017..f35186a9eb 100644\n--- a/django/contrib/admin/utils.py\n+++ b/django/contrib/admin/utils.py\n@@ -13,6 +13,8 @@ from django.utils.html import format_html\n from django.utils.regex_helper import _lazy_re_compile\n from django.utils.text import capfirst\n from django.utils.translation import ngettext, override as translation_override\n+from django.db.models import JSONField\n+from django.forms import JSONField as FormJSONField\n \n QUOTE_MAP = {i: '_%02X' % i for i in b'\"":/_#?;@&=+$,""[]<>%\\n\\'}\n UNQUOTE_MAP = {v: chr(k) for k, v in QUOTE_MAP.items()}\n@@ -395,6 +397,8 @@ def display_for_field(value, field, empty_value_display):\n     elif isinstance(field, models.DecimalField):\n         return formats.number_format(value, field.decimal_places)\n     elif isinstance(field, (models.IntegerField, models.FloatField)):\n+    elif isinstance(field, JSONField):\n+        return FormJSONField().prepare_value(value)\n     elif isinstance(field, models.FileField) and value:\n         return format_html('<a href=\""{}\"">{}</a>', value.url, value)\n     else:"" > patch.txt && cat patch.txt"
+68,66,1,1033625744460400,1033625926998498,0,0.0,"cat > patch.txt << 'EOL'
+diff --git a/django/contrib/admin/utils.py b/django/contrib/admin/utils.py
+index e4ddc8f017..f35186a9eb 100644
+--- a/django/contrib/admin/utils.py
++++ b/django/contrib/admin/utils.py
+@@ -13,6 +13,8 @@ from django.utils.html import format_html
+ from django.utils.regex_helper import _lazy_re_compile
+ from django.utils.text import capfirst
+ from django.utils.translation import ngettext, override as translation_override
++from django.db.models import JSONField
++from django.forms import JSONField as FormJSONField
+ 
+ QUOTE_MAP = {i: '_%02X' % i for i in b'"":/_#?;@&=+$,""[]<>%\n\\'}
+ UNQUOTE_MAP = {v: chr(k) for k, v in QUOTE_MAP.items()}
+@@ -395,6 +397,8 @@ def display_for_field(value, field, empty_value_display):
+     elif isinstance(field, models.DecimalField):
+         return formats.number_format(value, field.decimal_places)
+     elif isinstance(field, (models.IntegerField, models.FloatField)):
++    elif isinstance(field, JSONField):
++        return FormJSONField().prepare_value(value)
+     elif isinstance(field, models.FileField) and value):
+         return format_html('<a href=""{}"">{}</a>', value.url, value)
+     else:
+EOL"
+69,67,1,1033625927022372,1033626116096467,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

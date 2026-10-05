@@ -1,0 +1,111 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1033031669853936,1033032380025167,0,0.0,"find . -type f -name ""compiler.py"""
+1,1,2,1033032380040024,1033032678261831,0,0.0,"find . -type f -name ""*.py"" | grep -i query"
+2,1,3,1033032678268954,1033032862917740,0,0.0,ls -la
+3,2,1,1033032862948297,1033033048446443,0,0.0,head -n 450 django/db/models/sql/compiler.py | tail -n 50
+4,3,1,1033033048454869,1033033231660593,0,0.0,"grep -n ""values_select"" django/db/models/sql/query.py"
+5,4,1,1033033231667556,1033033417766111,0,0.0,"grep -n ""set_values"" django/db/models/sql/query.py"
+6,5,1,1033033417779576,1033033600227031,0,0.0,"sed -n '2025,2070p' django/db/models/sql/query.py"
+7,6,1,1033033600235757,1033033786850037,0,0.0,"grep -n ""values"" django/db/models/query.py | grep -i ""def"""
+8,7,1,1033033786858253,1033033971685288,0,0.0,"sed -n '785,810p' django/db/models/query.py"
+9,8,1,1033033971693323,1033034150604410,0,0.0,"sed -n '810,840p' django/db/models/query.py"
+10,9,1,1033034150612075,1033034340827148,0,0.0,"grep -n ""union"" django/db/models/query.py"
+11,10,1,1033034340843498,1033034527141642,0,0.0,"grep -n ""_combinator_query"" django/db/models/query.py"
+12,11,1,1033034527151781,1033034712834818,0,0.0,"sed -n '928,960p' django/db/models/query.py"
+13,12,1,1033034712843374,1033034895558033,0,0.0,"grep -n ""get_combinator_sql"" -A 50 django/db/models/sql/compiler.py"
+14,13,1,1033034895568253,1033035078809062,0,0.0,"echo ""from django.db import models
+
+class ReservedName(models.Model):
+    name = models.CharField(max_length=100)
+    order = models.IntegerField()
+
+# Create a record
+ReservedName.objects.create(name='a', order=2)
+
+# Create a queryset
+qs1 = ReservedName.objects.all()
+
+# First call - should return (name, order)
+print('First call:')
+print(qs1.union(qs1).values_list('name', 'order').get())
+
+# Second call - should return only (order,) but returns (name, order)
+print('\nSecond call:')
+print(qs1.union(qs1).values_list('order').get())
+"" > reproduce.py"
+15,14,1,1033035078820604,1033035259590527,2,2.0,"cp django/db/models/sql/compiler.py django/db/models/sql/compiler.py.bak && sed -i '428,433c\\                # Apply the current query\'s values_select to combined queries, if set\n                if self.query.values_select:\n                    compiler.query.set_values((\n                        *self.query.extra_select,\n                        *self.query.values_select,\n                        *self.query.annotation_select,\n                    ))' django/db/models/sql/compiler.py"
+16,15,1,1033035259597009,1033035455641982,0,0.0,"cp django/db/models/sql/compiler.py django/db/models/sql/compiler.py.bak && sed -i ""428,433c\\                # Apply the current query's values_select to combined queries, if set\n                if self.query.values_select:\\n                    compiler.query.set_values((\\n                        *self.query.extra_select,\\n                        *self.query.values_select,\\n                        *self.query.annotation_select,\\n                    ))"" django/db/models/sql/compiler.py"
+17,16,1,1033035455656770,1033035640808067,1,1.0,diff django/db/models/sql/compiler.py.bak django/db/models/sql/compiler.py
+18,17,1,1033035640822263,1033035826374641,0,0.0,"echo ""import os\nimport django\nfrom django.conf import settings\n\nif not settings.configured:\n    settings.configure(\n        DEBUG=True,\n        DATABASES={\n            'default': {\n                'ENGINE': 'django.db.backends.sqlite3',\n                'NAME': ':memory:',\n            }\n        },\n        INSTALLED_APPS=[\n            '__main__',\n        ],\n        SECRET_KEY='test-key'\n    )\n\ndjango.setup()\n\n# Now run the reproduction script\nexec(open('reproduce.py').read())\n"" > run_reproduction.py"
+19,18,1,1033035826381634,1033036032672195,1,1.0,python run_reproduction.py
+20,19,1,1033036032680661,1033036217714787,0,0.0,"cat > run_reproduction.py << 'EOL'
+import os
+import django
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            '__main__',
+        ],
+        SECRET_KEY='test-key'
+    )
+
+django.setup()
+
+# Now run the reproduction script
+exec(open('reproduce.py').read())
+EOL"
+21,20,1,1033036217724786,1033036987416045,1,1.0,python run_reproduction.py
+22,21,1,1033036987432687,1033037171387132,0,0.0,"cat > run_reproduction.py << 'EOL'
+import os
+import django
+from django.conf import settings
+from django.core.management import call_command
+from django.db import connection
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            '__main__',
+        ],
+        SECRET_KEY='test-key'
+    )
+
+django.setup()
+
+# Create the model
+from django.db import models
+
+class ReservedName(models.Model):
+    name = models.CharField(max_length=100)
+    order = models.IntegerField()
+    
+    class Meta:
+        app_label = '__main__'
+
+# Create the table
+with connection.schema_editor() as schema_editor:
+    schema_editor.create_model(ReservedName)
+
+# Now run the reproduction script
+exec(open('reproduce.py').read())
+EOL"
+23,22,1,1033037171403272,1033037619851867,0,0.0,python run_reproduction.py
+24,23,1,1033037619861475,1033037818138647,0,0.0,git diff -- django/db/models/sql/compiler.py > patch.txt
+25,24,1,1033037818150469,1033038004356837,0,0.0,cat patch.txt
+26,25,1,1033038004366334,1033038189325126,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

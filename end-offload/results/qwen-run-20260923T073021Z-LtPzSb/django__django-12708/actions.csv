@@ -1,0 +1,808 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1033721194766562,1033721997087298,0,0,"find . -type f -name ""schema.py"" | grep -i base"
+1,1,2,1033721997106564,1033722315598172,0,0,"find . -type f -name ""*.py"" | grep -i models"
+2,1,3,1033722315606918,1033722629291959,0,0,"find . -type f -name ""schema.py"" | xargs grep -l ""_delete_composed_index"""
+3,2,1,1033722629299844,1033722815224520,0,0,"grep -n ""_delete_composed_index"" ./django/db/backends/base/schema.py -A 20"
+4,3,1,1033722815236863,1033722998932427,0,0,"grep -n ""_constraint_names"" ./django/db/backends/base/schema.py -A 15"
+5,4,1,1033722998940232,1033723185534152,0,0,"grep -n ""_constraint_names"" ./django/db/backends/base/schema.py -A 30"
+6,5,1,1033723185542928,1033723372525189,0,0,"grep -n ""_constraint_names"" ./django/db/backends/base/schema.py -A 30 | tail -n 35"
+7,6,1,1033723372528675,1033723693154439,0,0,"find . -type f -name ""options.py"" | xargs grep -l ""index_together\|unique_together"""
+8,7,1,1033723693163336,1033723881039455,0,0,"grep -n ""index_together\|unique_together"" ./django/db/models/options.py"
+9,8,1,1033723881043753,1033724070715765,0,0,"sed -n '85,185p' ./django/db/models/options.py"
+10,9,1,1033724070719231,1033724425865979,0,0,"find . -type f -path ""*/migrations/*"" | xargs grep -l ""index_together\|unique_together"""
+11,10,1,1033724425875056,1033724611463258,0,0,"grep -n ""index_together\|unique_together"" ./django/db/migrations/operations/models.py"
+12,11,1,1033724611471103,1033724796723491,0,0,"grep -A 20 ""class AlterUniqueTogether"" ./django/db/migrations/operations/models.py"
+13,12,1,1033724796728280,1033724983746208,0,0,"grep -n ""class AlterTogetherOptionOperation"" -A 50 ./django/db/migrations/operations/models.py"
+14,13,1,1033724983761026,1033725164079723,2,2,"sed -i '/def _delete_composed_index/,/self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))/c\
+    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):\
+        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}\
+        meta_index_names = {constraint.name for constraint in model._meta.indexes}\
+        columns = [model._meta.get_field(field).column for field in fields]\
+        constraint_names = self._constraint_names(\
+            model, columns, exclude=meta_constraint_names | meta_index_names,\
+            **constraint_kwargs\
+        )\
+        # When deleting an index_together, there might be a unique_together on the same\
+        # fields, so we might find multiple constraints. We should only delete the index\
+        # constraint, not the unique constraint.\
+        if not constraint_names:\
+            # No constraints found, nothing to delete\
+            return\
+        if len(constraint_names) > 1:\
+            # If we have multiple constraints, filter by the type we want to delete\
+            # (index or unique) based on the constraint_kwargs\
+            is_index = constraint_kwargs.get('index', False)\
+            is_unique = constraint_kwargs.get('unique', False)\
+            \
+            with self.connection.cursor() as cursor:\
+                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)\
+                \
+            # Filter constraint names based on the type we want to delete\
+            filtered_names = []\
+            for name in constraint_names:\
+                constraint = constraints.get(name, {})\
+                if is_index and constraint.get('index') and not constraint.get('unique'):\
+                    filtered_names.append(name)\
+                elif is_unique and constraint.get('unique'):\
+                    filtered_names.append(name)\
+            \
+            if len(filtered_names) != 1:\
+                # If we still don't have exactly one constraint, raise an error\
+                raise ValueError(""Found wrong number (%s) of constraints for %s(%s)"" % (\
+                    len(filtered_names),\
+                    model._meta.db_table,\
+                    "", "".join(columns),\
+                ))\
+            constraint_names = filtered_names\
+        \
+        if constraint_names:  # Only execute if we have a constraint to delete\
+            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))' ./django/db/backends/base/schema.py"
+15,16,1,1033725164095873,1033725350346791,2,2,"sed -i 's/def _delete_composed_index/,/self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))/c\\n    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):\\n        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}\\n        meta_index_names = {constraint.name for constraint in model._meta.indexes}\\n        columns = [model._meta.get_field(field).column for field in fields]\\n        constraint_names = self._constraint_names(\\n            model, columns, exclude=meta_constraint_names | meta_index_names,\\n            **constraint_kwargs\\n        )\\n        # When deleting an index_together, there might be a unique_together on the same\\n        # fields, so we might find multiple constraints. We should only delete the index\\n        # constraint, not the unique constraint.\\n        if not constraint_names:\\n            # No constraints found, nothing to delete\\n            return\\n        if len(constraint_names) > 1:\\n            # If we have multiple constraints, filter by the type we want to delete\\n            # (index or unique) based on the constraint_kwargs\\n            is_index = constraint_kwargs.get('index', False)\\n            is_unique = constraint_kwargs.get('unique', False)\\n            \\
+            with self.connection.cursor() as cursor:\\n                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)\\n                \\
+            # Filter constraint names based on the type we want to delete\\n            filtered_names = []\\n            for name in constraint_names:\\n                constraint = constraints.get(name, {})\\n                if is_index and constraint.get('index') and not constraint.get('unique'):\\n                    filtered_names.append(name)\\n                elif is_unique and constraint.get('unique'):\\n                    filtered_names.append(name)\\n            \\
+            if len(filtered_names) != 1:\\n                # If we still don't have exactly one constraint, raise an error\\n                raise ValueError(""Found wrong number (%s) of constraints for %s(%s)"" % (\\n                    len(filtered_names),\\n                    model._meta.db_table,\\n                    \"", \"".join(columns),\\n                ))\\n            constraint_names = filtered_names\\n        \\
+        if constraint_names:  # Only execute if we have a constraint to delete\\n            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))' ./django/db/backends/base/schema.py"
+16,17,1,1033725350407058,1033725537988712,0,0,"cat > temp_function.py << 'EOL'
+    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):
+        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}
+        meta_index_names = {constraint.name for constraint in model._meta.indexes}
+        columns = [model._meta.get_field(field).column for field in fields]
+        constraint_names = self._constraint_names(
+            model, columns, exclude=meta_constraint_names | meta_index_names,
+            **constraint_kwargs
+        )
+        # When deleting an index_together, there might be a unique_together on the same
+        # fields, so we might find multiple constraints. We should only delete the index
+        # constraint, not the unique constraint.
+        if not constraint_names:
+            # No constraints found, nothing to delete
+            return
+        if len(constraint_names) > 1:
+            # If we have multiple constraints, filter by the type we want to delete
+            # (index or unique) based on the constraint_kwargs
+            is_index = constraint_kwargs.get('index', False)
+            is_unique = constraint_kwargs.get('unique', False)
+            
+            with self.connection.cursor() as cursor:
+                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)
+                
+            # Filter constraint names based on the type we want to delete
+            filtered_names = []
+            for name in constraint_names:
+                constraint = constraints.get(name, {})
+                if is_index and constraint.get('index') and not constraint.get('unique'):
+                    filtered_names.append(name)
+                elif is_unique and constraint.get('unique'):
+                    filtered_names.append(name)
+            
+            if len(filtered_names) != 1:
+                # If we still don't have exactly one constraint, raise an error
+                raise ValueError(""Found wrong number (%s) of constraints for %s(%s)"" % (
+                    len(filtered_names),
+                    model._meta.db_table,
+                    "", "".join(columns),
+                ))
+            constraint_names = filtered_names
+        
+        if constraint_names:  # Only execute if we have a constraint to delete
+            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))
+EOL"
+17,18,1,1033725538002628,1033725722419788,1,1,"sed -i '/def _delete_composed_index/,/self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))/ {\n    r temp_function.py\n    d\n}' ./django/db/backends/base/schema.py"
+18,19,1,1033725722430328,1033725903767366,0,0,"grep -n ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+19,20,1,1033725903827103,1033726086197447,0,0,"grep -n ""^    def "" ./django/db/backends/base/schema.py | grep -A 5 ""_delete_composed_index"""
+20,21,1,1033726086206414,1033726275407489,0,0,"sed -i '402,417d' ./django/db/backends/base/schema.py && sed -i '402r temp_function.py' ./django/db/backends/base/schema.py"
+21,22,1,1033726275498273,1033726457577422,0,0,"sed -n '400,420p' ./django/db/backends/base/schema.py"
+22,23,1,1033726457585978,1033726645792331,0,0,"sed -i '402,420s/^    //' ./django/db/backends/base/schema.py && sed -i '402i     def _delete_composed_index(self, model, fields, constraint_kwargs, sql):' ./django/db/backends/base/schema.py"
+23,24,1,1033726645795457,1033726827720066,0,0,"sed -n '400,420p' ./django/db/backends/base/schema.py"
+24,25,1,1033726827728732,1033727009076350,0,0,"cat > modified_schema.py << 'EOL'
+$(sed -n '1,401p' ./django/db/backends/base/schema.py)
+    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):
+        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}
+        meta_index_names = {constraint.name for constraint in model._meta.indexes}
+        columns = [model._meta.get_field(field).column for field in fields]
+        constraint_names = self._constraint_names(
+            model, columns, exclude=meta_constraint_names | meta_index_names,
+            **constraint_kwargs
+        )
+        # When deleting an index_together, there might be a unique_together on the same
+        # fields, so we might find multiple constraints. We should only delete the index
+        # constraint, not the unique constraint.
+        if not constraint_names:
+            # No constraints found, nothing to delete
+            return
+        if len(constraint_names) > 1:
+            # If we have multiple constraints, filter by the type we want to delete
+            # (index or unique) based on the constraint_kwargs
+            is_index = constraint_kwargs.get('index', False)
+            is_unique = constraint_kwargs.get('unique', False)
+            
+            with self.connection.cursor() as cursor:
+                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)
+                
+            # Filter constraint names based on the type we want to delete
+            filtered_names = []
+            for name in constraint_names:
+                constraint = constraints.get(name, {})
+                if is_index and constraint.get('index') and not constraint.get('unique'):
+                    filtered_names.append(name)
+                elif is_unique and constraint.get('unique'):
+                    filtered_names.append(name)
+            
+            if len(filtered_names) != 1:
+                # If we still don't have exactly one constraint, raise an error
+                raise ValueError(""Found wrong number (%s) of constraints for %s(%s)"" % (
+                    len(filtered_names),
+                    model._meta.db_table,
+                    "", "".join(columns),
+                ))
+            constraint_names = filtered_names
+        
+        if constraint_names:  # Only execute if we have a constraint to delete
+            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))
+
+$(sed -n '418,$p' ./django/db/backends/base/schema.py)
+EOL"
+25,26,1,1033727009079676,1033727200406177,0,0,mv modified_schema.py ./django/db/backends/base/schema.py
+26,27,1,1033727200409684,1033727386501386,0,0,"grep -A 30 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+27,28,1,1033727386516514,1033727569696682,0,0,"cat > test_fix.py << 'EOL'
+import django
+from django.conf import settings
+from django.db import models, connection
+from django.db.migrations import Migration
+from django.db.migrations.state import ProjectState
+from django.db.migrations.operations.models import AlterIndexTogether
+
+# Configure Django settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[],
+        MIGRATION_MODULES={}
+    )
+
+django.setup()
+
+class TestModel(models.Model):
+    field1 = models.CharField(max_length=10)
+    field2 = models.CharField(max_length=10)
+    
+    class Meta:
+        unique_together = ('field1', 'field2')
+        index_together = ('field1', 'field2')
+
+# Create initial schema
+with connection.schema_editor() as schema_editor:
+    schema_editor.create_model(TestModel)
+
+# Get initial and final states
+initial_state = ProjectState.from_apps(connection.introspection.get_table_list(connection.cursor()))
+final_fields = [
+    ('field1', models.CharField(max_length=10)),
+    ('field2', models.CharField(max_length=10)),
+]
+final_options = {
+    'unique_together': {('field1', 'field2')},
+    # Note: no index_together
+}
+final_state = ProjectState.create(
+    app_label='test',
+    model_name='TestModel',
+    fields=final_fields,
+    options=final_options
+)
+
+# Apply migration to remove index_together
+operation = AlterIndexTogether('TestModel', index_together=set())
+operation.database_forwards('test', connection.schema_editor(), initial_state, final_state)
+
+print(""Successfully removed index_together while preserving unique_together!"")
+EOL"
+28,29,1,1033727569708624,1033728329304057,1,1,python test_fix.py
+29,30,1,1033728329382078,1033728517383099,0,0,"cat > test_fix.py << 'EOL'
+import django
+from django.conf import settings
+from django.db import models, connection
+from django.db.migrations import Migration
+from django.db.migrations.state import ProjectState
+from django.db.migrations.operations.models import AlterIndexTogether
+
+# Configure Django settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[__name__],  # Add the current module as an installed app
+        MIGRATION_MODULES={}
+    )
+
+django.setup()
+
+class TestModel(models.Model):
+    field1 = models.CharField(max_length=10)
+    field2 = models.CharField(max_length=10)
+    
+    class Meta:
+        app_label = 'test_app'  # Explicitly set app_label
+        unique_together = ('field1', 'field2')
+        index_together = ('field1', 'field2')
+
+# Create initial schema
+with connection.schema_editor() as schema_editor:
+    schema_editor.create_model(TestModel)
+
+# Get initial and final states
+initial_state = ProjectState.from_apps(connection.introspection.get_table_list(connection.cursor()))
+final_fields = [
+    ('field1', models.CharField(max_length=10)),
+    ('field2', models.CharField(max_length=10)),
+]
+final_options = {
+    'unique_together': {('field1', 'field2')},
+    # Note: no index_together
+}
+final_state = ProjectState.create(
+    app_label='test_app',
+    model_name='TestModel',
+    fields=final_fields,
+    options=final_options
+)
+
+# Apply migration to remove index_together
+operation = AlterIndexTogether('TestModel', index_together=set())
+operation.database_forwards('test_app', connection.schema_editor(), initial_state, final_state)
+
+print(""Successfully removed index_together while preserving unique_together!"")
+EOL"
+30,31,1,1033728517389470,1033729002606450,1,1,python test_fix.py
+31,32,1,1033729002618222,1033729194949669,0,0,"cat <(sed -n '1,401p' ./django/db/backends/base/schema.py) temp_function.py <(sed -n '418,$p' ./django/db/backends/base/schema.py) > modified_schema.py && mv modified_schema.py ./django/db/backends/base/schema.py"
+32,33,1,1033729194953046,1033729656262737,1,1,python test_fix.py
+33,34,1,1033729656347656,1033729846381051,0,0,head -n 401 ./django/db/backends/base/schema.py > modified_schema.py && cat temp_function.py >> modified_schema.py && tail -n +418 ./django/db/backends/base/schema.py >> modified_schema.py && mv modified_schema.py ./django/db/backends/base/schema.py
+34,35,1,1033729846385188,1033730032896804,0,0,"grep -A 5 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+35,36,1,1033730032905711,1033730225660803,0,0,"rm -f modified_schema.py && head -n 401 ./django/db/backends/base/schema.py > modified_schema.py && cat temp_function.py >> modified_schema.py && grep -n ""def alter_db_table"" ./django/db/backends/base/schema.py | head -1 | cut -d: -f1 | xargs -I {} tail -n +{} ./django/db/backends/base/schema.py >> modified_schema.py && mv modified_schema.py ./django/db/backends/base/schema.py"
+36,37,1,1033730225674068,1033730411971300,0,0,"grep -A 5 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+37,38,1,1033730411981239,1033730594280232,2,2,"sed -i '/def _delete_composed_index/,/self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))/c\\
+    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):\\
+        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}\\
+        meta_index_names = {constraint.name for constraint in model._meta.indexes}\\
+        columns = [model._meta.get_field(field).column for field in fields]\\
+        constraint_names = self._constraint_names(\\
+            model, columns, exclude=meta_constraint_names | meta_index_names,\\
+            **constraint_kwargs\\
+        )\\
+        # When deleting an index_together, there might be a unique_together on the same\\
+        # fields, so we might find multiple constraints. We should only delete the index\\
+        # constraint, not the unique constraint.\\
+        if not constraint_names:\\
+            # No constraints found, nothing to delete\\
+            return\\
+        if len(constraint_names) > 1:\\
+            # If we have multiple constraints, filter by the type we want to delete\\
+            # (index or unique) based on the constraint_kwargs\\
+            is_index = constraint_kwargs.get('index', False)\\
+            is_unique = constraint_kwargs.get('unique', False)\\
+            \\\n            with self.connection.cursor() as cursor:\\
+                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)\\
+                \\\n            # Filter constraint names based on the type we want to delete\\
+            filtered_names = []\\
+            for name in constraint_names:\\
+                constraint = constraints.get(name, {})\\
+                if is_index and constraint.get('index') and not constraint.get('unique'):\\
+                    filtered_names.append(name)\\
+                elif is_unique and constraint.get('unique'):\\
+                    filtered_names.append(name)\\
+            \\\n            if len(filtered_names) != 1:\\
+                # If we still don't have exactly one constraint, raise an error\\
+                raise ValueError(\""Found wrong number (%s) of constraints for %s(%s)\"" % (\\
+                    len(filtered_names),\\
+                    model._meta.db_table,\\
+                    \""\"", \"".join(columns),\\
+                ))\\
+            constraint_names = filtered_names\\
+        \\\n        if constraint_names:  # Only execute if we have a constraint to delete\\
+            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))' ./django/db/backends/base/schema.py"
+38,39,1,1033730594360157,1033730776882336,0,0,"cat > modify_schema.py << 'EOL'
+import re
+
+def modify_schema_file():
+    with open('./django/db/backends/base/schema.py', 'r') as file:
+        content = file.read()
+    
+    # Define the new function
+    new_function = '''    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):
+        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}
+        meta_index_names = {constraint.name for constraint in model._meta.indexes}
+        columns = [model._meta.get_field(field).column for field in fields]
+        constraint_names = self._constraint_names(
+            model, columns, exclude=meta_constraint_names | meta_index_names,
+            **constraint_kwargs
+        )
+        # When deleting an index_together, there might be a unique_together on the same
+        # fields, so we might find multiple constraints. We should only delete the index
+        # constraint, not the unique constraint.
+        if not constraint_names:
+            # No constraints found, nothing to delete
+            return
+        if len(constraint_names) > 1:
+            # If we have multiple constraints, filter by the type we want to delete
+            # (index or unique) based on the constraint_kwargs
+            is_index = constraint_kwargs.get('index', False)
+            is_unique = constraint_kwargs.get('unique', False)
+            
+            with self.connection.cursor() as cursor:
+                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)
+                
+            # Filter constraint names based on the type we want to delete
+            filtered_names = []
+            for name in constraint_names:
+                constraint = constraints.get(name, {})
+                if is_index and constraint.get('index') and not constraint.get('unique'):
+                    filtered_names.append(name)
+                elif is_unique and constraint.get('unique'):
+                    filtered_names.append(name)
+            
+            if len(filtered_names) != 1:
+                # If we still don't have exactly one constraint, raise an error
+                raise ValueError(""Found wrong number (%s) of constraints for %s(%s)"" % (
+                    len(filtered_names),
+                    model._meta.db_table,
+                    "", "".join(columns),
+                ))
+            constraint_names = filtered_names
+        
+        if constraint_names:  # Only execute if we have a constraint to delete
+            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))'''
+    
+    # Replace the function using regex
+    pattern = r'def _delete_composed_index\([^)]*\):[^#]*(?=    def |class |$)'
+    replacement = new_function
+    new_content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+    
+    with open('./django/db/backends/base/schema.py', 'w') as file:
+        file.write(new_content)
+
+if __name__ == '__main__':
+    modify_schema_file()
+EOL"
+39,40,1,1033730776887856,1033730984065266,0,0,python modify_schema.py
+40,41,1,1033730984071598,1033731170006129,0,0,"grep -A 30 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+41,42,1,1033731170012681,1033731379493133,0,0,"rm -f modify_schema.py && git checkout ./django/db/backends/base/schema.py && cat > temp_function.py << 'EOL'
+    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):
+        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}
+        meta_index_names = {constraint.name for constraint in model._meta.indexes}
+        columns = [model._meta.get_field(field).column for field in fields]
+        constraint_names = self._constraint_names(
+            model, columns, exclude=meta_constraint_names | meta_index_names,
+            **constraint_kwargs
+        )
+        # When deleting an index_together, there might be a unique_together on the same
+        # fields, so we might find multiple constraints. We should only delete the index
+        # constraint, not the unique constraint.
+        if not constraint_names:
+            # No constraints found, nothing to delete
+            return
+        if len(constraint_names) > 1:
+            # If we have multiple constraints, filter by the type we want to delete
+            # (index or unique) based on the constraint_kwargs
+            is_index = constraint_kwargs.get('index', False)
+            is_unique = constraint_kwargs.get('unique', False)
+            
+            with self.connection.cursor() as cursor:
+                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)
+                
+            # Filter constraint names based on the type we want to delete
+            filtered_names = []
+            for name in constraint_names:
+                constraint = constraints.get(name, {})
+                if is_index and constraint.get('index') and not constraint.get('unique'):
+                    filtered_names.append(name)
+                elif is_unique and constraint.get('unique'):
+                    filtered_names.append(name)
+            
+            if len(filtered_names) != 1:
+                # If we still don't have exactly one constraint, raise an error
+                raise ValueError(""Found wrong number (%s) of constraints for %s(%s)"" % (
+                    len(filtered_names),
+                    model._meta.db_table,
+                    "", "".join(columns),
+                ))
+            constraint_names = filtered_names
+        
+        if constraint_names:  # Only execute if we have a constraint to delete
+            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))
+EOL"
+42,43,1,1033731379505667,1033731570146923,0,0,"line_num=$(grep -n ""def _delete_composed_index"" ./django/db/backends/base/schema.py | head -1 | cut -d: -f1) && end_line=$(expr $line_num + 15) && sed -i ""${line_num},${end_line}d"" ./django/db/backends/base/schema.py && sed -i ""${line_num}r temp_function.py"" ./django/db/backends/base/schema.py"
+43,44,1,1033731570156501,1033731755639415,0,0,"grep -A 30 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+44,45,1,1033731755649884,1033732212417767,1,1,python test_fix.py
+45,46,1,1033732212494526,1033732407439769,0,0,"line_num=$(grep -n ""def _delete_composed_index"" ./django/db/backends/base/schema.py | head -1 | cut -d: -f1) && end_line=$(expr $line_num + 15) && sed -i ""${line_num},${end_line}d"" ./django/db/backends/base/schema.py && sed -i ""${line_num}i     def _delete_composed_index(self, model, fields, constraint_kwargs, sql):\n        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}\n        meta_index_names = {constraint.name for constraint in model._meta.indexes}\n        columns = [model._meta.get_field(field).column for field in fields]\n        constraint_names = self._constraint_names(\n            model, columns, exclude=meta_constraint_names | meta_index_names,\n            **constraint_kwargs\n        )\n        # When deleting an index_together, there might be a unique_together on the same\n        # fields, so we might find multiple constraints. We should only delete the index\n        # constraint, not the unique constraint.\n        if not constraint_names:\n            # No constraints found, nothing to delete\n            return\n        if len(constraint_names) > 1:\n            # If we have multiple constraints, filter by the type we want to delete\n            # (index or unique) based on the constraint_kwargs\n            is_index = constraint_kwargs.get('index', False)\n            is_unique = constraint_kwargs.get('unique', False)\n            \n            with self.connection.cursor() as cursor:\n                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)\n                \n            # Filter constraint names based on the type we want to delete\n            filtered_names = []\n            for name in constraint_names:\n                constraint = constraints.get(name, {})\n                if is_index and constraint.get('index') and not constraint.get('unique'):\n                    filtered_names.append(name)\n                elif is_unique and constraint.get('unique'):\n                    filtered_names.append(name)\n            \n            if len(filtered_names) != 1:\n                # If we still don't have exactly one constraint, raise an error\n                raise ValueError(\""Found wrong number (%s) of constraints for %s(%s)\"" % (\n                    len(filtered_names),\n                    model._meta.db_table,\n                    \""\"", \"".join(columns),\n                ))\n            constraint_names = filtered_names\n        \n        if constraint_names:  # Only execute if we have a constraint to delete\n            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))"" ./django/db/backends/base/schema.py"
+46,47,1,1033732407445199,1033732592947414,0,0,"grep -A 30 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+47,48,1,1033732592956972,1033732784784223,0,0,"line_num=$(grep -n ""def _delete_composed_index"" ./django/db/backends/base/schema.py | head -1 | cut -d: -f1) && sed -i ""${line_num}d"" ./django/db/backends/base/schema.py && sed -i ""${line_num}i     def _delete_composed_index(self, model, fields, constraint_kwargs, sql):"" ./django/db/backends/base/schema.py"
+48,49,1,1033732784790675,1033732970406580,0,0,"grep -A 30 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+49,50,1,1033732970417390,1033733156332376,0,0,"line_num=$(grep -n ""def _delete_composed_index"" ./django/db/backends/base/schema.py | head -1 | cut -d: -f1) && sed -i ""${line_num}s/^def/    def/"" ./django/db/backends/base/schema.py"
+50,51,1,1033733156400698,1033733342340105,0,0,"grep -A 30 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+51,52,1,1033733342351316,1033733805512938,1,1,python test_fix.py
+52,53,1,1033733805530050,1033733987725168,0,0,"cat > modify_schema.py << 'EOL'
+import re
+
+def fix_indentation(content, start_marker, end_marker, indent_level=4):
+    # Find the start of the function
+    start_pattern = re.escape(start_marker)
+    start_match = re.search(start_pattern, content)
+    if not start_match:
+        return content
+    
+    start_pos = start_match.start()
+    
+    # Find the end of the function
+    end_match = re.search(re.escape(end_marker), content[start_pos:])
+    if not end_match:
+        return content
+    
+    end_pos = start_pos + end_match.start()
+    
+    # Extract the function content
+    function_content = content[start_pos:end_pos]
+    
+    # Fix indentation
+    lines = function_content.split('\n')
+    fixed_lines = []
+    for i, line in enumerate(lines):
+        if i == 0:
+            # First line should have 4 spaces for the def
+            fixed_lines.append('    ' + line.lstrip())
+        else:
+            # Subsequent lines should maintain their relative indentation
+            stripped = line.lstrip()
+            if stripped:
+                # Only add indentation if the line is not empty
+                fixed_lines.append('        ' + stripped)
+            else:
+                # Keep empty lines
+                fixed_lines.append('')
+    
+    # Reconstruct the content
+    fixed_function = '\n'.join(fixed_lines)
+    return content[:start_pos] + fixed_function + content[end_pos:]
+
+def modify_schema_file():
+    with open('./django/db/backends/base/schema.py', 'r') as file:
+        content = file.read()
+    
+    # Define the markers for the function
+    start_marker = 'def _delete_composed_index(self, model, fields, constraint_kwargs, sql):'
+    # Find a unique marker at the end of the function
+    end_marker = '        if constraint_names:  # Only execute if we have a constraint to delete'
+    
+    # Fix the indentation
+    content = fix_indentation(content, start_marker, end_marker)
+    
+    with open('./django/db/backends/base/schema.py', 'w') as file:
+        file.write(content)
+
+if __name__ == '__main__':
+    modify_schema_file()
+EOL"
+53,54,1,1033733987729967,1033734191926764,0,0,python modify_schema.py
+54,55,1,1033734191937143,1033734372914637,0,0,"grep -A 30 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+55,56,1,1033734372925237,1033734564323464,0,0,"line_num=$(grep -n ""def _delete_composed_index"" ./django/db/backends/base/schema.py | head -1 | cut -d: -f1) && end_line=$(expr $line_num + 15) && sed -i ""${line_num},${end_line}d"" ./django/db/backends/base/schema.py && sed -i ""${line_num}i     def _delete_composed_index(self, model, fields, constraint_kwargs, sql):\n        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}\n        meta_index_names = {constraint.name for constraint in model._meta.indexes}\n        columns = [model._meta.get_field(field).column for field in fields]\n        constraint_names = self._constraint_names(\n            model, columns, exclude=meta_constraint_names | meta_index_names,\n            **constraint_kwargs\n        )\n        # When deleting an index_together, there might be a unique_together on the same\n        # fields, so we might find multiple constraints. We should only delete the index\n        # constraint, not the unique constraint.\n        if not constraint_names:\n            # No constraints found, nothing to delete\n            return\n        if len(constraint_names) > 1:\n            # If we have multiple constraints, filter by the type we want to delete\n            # (index or unique) based on the constraint_kwargs\n            is_index = constraint_kwargs.get('index', False)\n            is_unique = constraint_kwargs.get('unique', False)\n            \n            with self.connection.cursor() as cursor:\n                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)\n                \n            # Filter constraint names based on the type we want to delete\n            filtered_names = []\n            for name in constraint_names:\n                constraint = constraints.get(name, {})\n                if is_index and constraint.get('index') and not constraint.get('unique'):\n                    filtered_names.append(name)\n                elif is_unique and constraint.get('unique'):\n                    filtered_names.append(name)\n            \n            if len(filtered_names) != 1:\n                # If we still don't have exactly one constraint, raise an error\n                raise ValueError(\""Found wrong number (%s) of constraints for %s(%s)\"" % (\n                    len(filtered_names),\n                    model._meta.db_table,\n                    \""\"", \"".join(columns),\n                ))\n            constraint_names = filtered_names\n        \n        if constraint_names:  # Only execute if we have a constraint to delete\n            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))"" ./django/db/backends/base/schema.py"
+56,57,1,1033734564409249,1033734744797766,0,0,"grep -A 30 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+57,58,1,1033734744807744,1033734934113670,0,0,"line_num=$(grep -n ""def _delete_composed_index"" ./django/db/backends/base/schema.py | head -1 | cut -d: -f1) && sed -i ""${line_num}s/^def/    def/"" ./django/db/backends/base/schema.py"
+58,59,1,1033734934117467,1033735119368149,0,0,"grep -A 30 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+59,60,1,1033735119441617,1033735583174312,1,1,python test_fix.py
+60,61,1,1033735583184782,1033735766600556,0,0,"cat > new_schema.py << 'EOL'
+$(head -n 401 ./django/db/backends/base/schema.py)
+    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):
+        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}
+        meta_index_names = {constraint.name for constraint in model._meta.indexes}
+        columns = [model._meta.get_field(field).column for field in fields]
+        constraint_names = self._constraint_names(
+            model, columns, exclude=meta_constraint_names | meta_index_names,
+            **constraint_kwargs
+        )
+        # When deleting an index_together, there might be a unique_together on the same
+        # fields, so we might find multiple constraints. We should only delete the index
+        # constraint, not the unique constraint.
+        if not constraint_names:
+            # No constraints found, nothing to delete
+            return
+        if len(constraint_names) > 1:
+            # If we have multiple constraints, filter by the type we want to delete
+            # (index or unique) based on the constraint_kwargs
+            is_index = constraint_kwargs.get('index', False)
+            is_unique = constraint_kwargs.get('unique', False)
+            
+            with self.connection.cursor() as cursor:
+                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)
+                
+            # Filter constraint names based on the type we want to delete
+            filtered_names = []
+            for name in constraint_names:
+                constraint = constraints.get(name, {})
+                if is_index and constraint.get('index') and not constraint.get('unique'):
+                    filtered_names.append(name)
+                elif is_unique and constraint.get('unique'):
+                    filtered_names.append(name)
+            
+            if len(filtered_names) != 1:
+                # If we still don't have exactly one constraint, raise an error
+                raise ValueError(""Found wrong number (%s) of constraints for %s(%s)"" % (
+                    len(filtered_names),
+                    model._meta.db_table,
+                    "", "".join(columns),
+                ))
+            constraint_names = filtered_names
+        
+        if constraint_names:  # Only execute if we have a constraint to delete
+            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))
+
+$(tail -n +418 ./django/db/backends/base/schema.py)
+EOL"
+61,62,1,1033735766618640,1033735953967804,0,0,mv new_schema.py ./django/db/backends/base/schema.py
+62,63,1,1033735953975839,1033736139712938,0,0,"grep -A 30 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+63,64,1,1033736139775319,1033736600358605,1,1,python test_fix.py
+64,65,1,1033736600425990,1033736789732893,0,0,"cat <(head -n 401 ./django/db/backends/base/schema.py) <(echo ""    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):\n        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}\n        meta_index_names = {constraint.name for constraint in model._meta.indexes}\n        columns = [model._meta.get_field(field).column for field in fields]\n        constraint_names = self._constraint_names(\n            model, columns, exclude=meta_constraint_names | meta_index_names,\n            **constraint_kwargs\n        )\n        # When deleting an index_together, there might be a unique_together on the same\n        # fields, so we might find multiple constraints. We should only delete the index\n        # constraint, not the unique constraint.\n        if not constraint_names:\n            # No constraints found, nothing to delete\n            return\n        if len(constraint_names) > 1:\n            # If we have multiple constraints, filter by the type we want to delete\n            # (index or unique) based on the constraint_kwargs\n            is_index = constraint_kwargs.get('index', False)\n            is_unique = constraint_kwargs.get('unique', False)\n            \n            with self.connection.cursor() as cursor:\n                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)\n                \n            # Filter constraint names based on the type we want to delete\n            filtered_names = []\n            for name in constraint_names:\n                constraint = constraints.get(name, {})\n                if is_index and constraint.get('index') and not constraint.get('unique'):\n                    filtered_names.append(name)\n                elif is_unique and constraint.get('unique'):\n                    filtered_names.append(name)\n            \n            if len(filtered_names) != 1:\n                # If we still don't have exactly one constraint, raise an error\n                raise ValueError(\""Found wrong number (%s) of constraints for %s(%s)\"" % (\n                    len(filtered_names),\n                    model._meta.db_table,\n                    \""\"", \"".join(columns),\n                ))\n            constraint_names = filtered_names\n        \n        if constraint_names:  # Only execute if we have a constraint to delete\n            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))"") <(tail -n +418 ./django/db/backends/base/schema.py) > new_schema.py && mv new_schema.py ./django/db/backends/base/schema.py"
+65,66,1,1033736789738323,1033736971698730,0,0,"grep -A 30 ""def _delete_composed_index"" ./django/db/backends/base/schema.py"
+66,67,1,1033736971708248,1033737187436184,1,1,python -m py_compile ./django/db/backends/base/schema.py
+67,68,1,1033737187449018,1033737373017295,0,0,"head -n 401 ./django/db/backends/base/schema.py > new_schema.py && echo ""    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):\n        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}\n        meta_index_names = {constraint.name for constraint in model._meta.indexes}\n        columns = [model._meta.get_field(field).column for field in fields]\n        constraint_names = self._constraint_names(\n            model, columns, exclude=meta_constraint_names | meta_index_names,\n            **constraint_kwargs\n        )\n        # When deleting an index_together, there might be a unique_together on the same\n        # fields, so we might find multiple constraints. We should only delete the index\n        # constraint, not the unique constraint.\n        if not constraint_names:\n            # No constraints found, nothing to delete\n            return\n        if len(constraint_names) > 1:\n            # If we have multiple constraints, filter by the type we want to delete\n            # (index or unique) based on the constraint_kwargs\n            is_index = constraint_kwargs.get('index', False)\n            is_unique = constraint_kwargs.get('unique', False)\n            \n            with self.connection.cursor() as cursor:\n                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)\n                \n            # Filter constraint names based on the type we want to delete\n            filtered_names = []\n            for name in constraint_names:\n                constraint = constraints.get(name, {})\n                if is_index and constraint.get('index') and not constraint.get('unique'):\n                    filtered_names.append(name)\n                elif is_unique and constraint.get('unique'):\n                    filtered_names.append(name)\n            \n            if len(filtered_names) != 1:\n                # If we still don't have exactly one constraint, raise an error\n                raise ValueError(\""Found wrong number (%s) of constraints for %s(%s)\"" % (\n                    len(filtered_names),\n                    model._meta.db_table,\n                    \""\"", \"".join(columns),\n                ))\n            constraint_names = filtered_names\n        \n        if constraint_names:  # Only execute if we have a constraint to delete\n            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))"" >> new_schema.py && tail -n +418 ./django/db/backends/base/schema.py >> new_schema.py && mv new_schema.py ./django/db/backends/base/schema.py"
+68,69,1,1033737373028376,1033737585592123,1,1,python -m py_compile ./django/db/backends/base/schema.py
+69,70,1,1033737585668085,1033737773278869,0,0,"cat > create_schema.py << 'EOL'
+with open('./django/db/backends/base/schema.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the line with the function definition
+func_start = None
+for i, line in enumerate(lines):
+    if 'def _delete_composed_index' in line:
+        func_start = i
+        break
+
+if func_start is not None:
+    # Find the end of the function (next line that starts with '    def' or 'class')
+    func_end = None
+    for i in range(func_start + 1, len(lines)):
+        if lines[i].startswith('    def') or lines[i].startswith('class'):
+            func_end = i
+            break
+    
+    if func_end is None:
+        func_end = len(lines)
+    
+    # Create the new function
+    new_func = [
+        '    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):\n',
+        '        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}\n',
+        '        meta_index_names = {constraint.name for constraint in model._meta.indexes}\n',
+        '        columns = [model._meta.get_field(field).column for field in fields]\n',
+        '        constraint_names = self._constraint_names(\n',
+        '            model, columns, exclude=meta_constraint_names | meta_index_names,\n',
+        '            **constraint_kwargs\n',
+        '        )\n',
+        '        # When deleting an index_together, there might be a unique_together on the same\n',
+        '        # fields, so we might find multiple constraints. We should only delete the index\n',
+        '        # constraint, not the unique constraint.\n',
+        '        if not constraint_names:\n',
+        '            # No constraints found, nothing to delete\n',
+        '            return\n',
+        '        if len(constraint_names) > 1:\n',
+        '            # If we have multiple constraints, filter by the type we want to delete\n',
+        '            # (index or unique) based on the constraint_kwargs\n',
+        '            is_index = constraint_kwargs.get('index', False)\n',
+        '            is_unique = constraint_kwargs.get('unique', False)\n',
+        '            \n',
+        '            with self.connection.cursor() as cursor:\n',
+        '                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)\n',
+        '                \n',
+        '            # Filter constraint names based on the type we want to delete\n',
+        '            filtered_names = []\n',
+        '            for name in constraint_names:\n',
+        '                constraint = constraints.get(name, {})\n',
+        '                if is_index and constraint.get('index') and not constraint.get('unique'):\n',
+        '                    filtered_names.append(name)\n',
+        '                elif is_unique and constraint.get('unique'):\n',
+        '                    filtered_names.append(name)\n',
+        '            \n',
+        '            if len(filtered_names) != 1:\n',
+        '                # If we still don't have exactly one constraint, raise an error\n',
+        '                raise ValueError(""Found wrong number (%s) of constraints for %s(%s)"" % (\n',
+        '                    len(filtered_names),\n',
+        '                    model._meta.db_table,\n',
+        '                    "", "".join(columns),\n',
+        '                ))\n',
+        '            constraint_names = filtered_names\n',
+        '        \n',
+        '        if constraint_names:  # Only execute if we have a constraint to delete\n',
+        '            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))\n',
+        '        \n'
+    ]
+    
+    # Replace the function
+    new_lines = lines[:func_start] + new_func + lines[func_end:]
+    
+    with open('./django/db/backends/base/schema.py', 'w') as f:
+        f.writelines(new_lines)
+EOL"
+70,71,1,1033737773288727,1033737972861339,1,1,python create_schema.py
+71,72,1,1033737972871688,1033738164041040,0,0,"cat > create_schema.py << 'EOL'
+with open('./django/db/backends/base/schema.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the line with the function definition
+func_start = None
+for i, line in enumerate(lines):
+    if 'def _delete_composed_index' in line:
+        func_start = i
+        break
+
+if func_start is not None:
+    # Find the end of the function (next line that starts with '    def' or 'class')
+    func_end = None
+    for i in range(func_start + 1, len(lines)):
+        if lines[i].startswith('    def') or lines[i].startswith('class'):
+            func_end = i
+            break
+    
+    if func_end is None:
+        func_end = len(lines)
+    
+    # Create the new function
+    new_func = [
+        '    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):\n',
+        '        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}\n',
+        '        meta_index_names = {constraint.name for constraint in model._meta.indexes}\n',
+        '        columns = [model._meta.get_field(field).column for field in fields]\n',
+        '        constraint_names = self._constraint_names(\n',
+        '            model, columns, exclude=meta_constraint_names | meta_index_names,\n',
+        '            **constraint_kwargs\n',
+        '        )\n',
+        '        # When deleting an index_together, there might be a unique_together on the same\n',
+        '        # fields, so we might find multiple constraints. We should only delete the index\n',
+        '        # constraint, not the unique constraint.\n',
+        '        if not constraint_names:\n',
+        '            # No constraints found, nothing to delete\n',
+        '            return\n',
+        '        if len(constraint_names) > 1:\n',
+        '            # If we have multiple constraints, filter by the type we want to delete\n',
+        '            # (index or unique) based on the constraint_kwargs\n',
+        '            is_index = constraint_kwargs.get(\'index\', False)\n',
+        '            is_unique = constraint_kwargs.get(\'unique\', False)\n',
+        '            \n',
+        '            with self.connection.cursor() as cursor:\n',
+        '                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)\n',
+        '                \n',
+        '            # Filter constraint names based on the type we want to delete\n',
+        '            filtered_names = []\n',
+        '            for name in constraint_names:\n',
+        '                constraint = constraints.get(name, {})\n',
+        '                if is_index and constraint.get(\'index\') and not constraint.get(\'unique\'):\n',
+        '                    filtered_names.append(name)\n',
+        '                elif is_unique and constraint.get(\'unique\'):\n',
+        '                    filtered_names.append(name)\n',
+        '            \n',
+        '            if len(filtered_names) != 1:\n',
+        '                # If we still don't have exactly one constraint, raise an error\n',
+        '                raise ValueError(\""Found wrong number (%s) of constraints for %s(%s)\"" % (\n',
+        '                    len(filtered_names),\n',
+        '                    model._meta.db_table,\n',
+        '                    \""\"", \"".join(columns),\n',
+        '                ))\n',
+        '            constraint_names = filtered_names\n',
+        '        \n',
+        '        if constraint_names:  # Only execute if we have a constraint to delete\n',
+        '            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))\n',
+        '        \n'
+    ]
+    
+    # Replace the function
+    new_lines = lines[:func_start] + new_func + lines[func_end:]
+    
+    with open('./django/db/backends/base/schema.py', 'w') as f:
+        f.writelines(new_lines)
+EOL"
+72,73,1,1033738164053122,1033738365362728,1,1,python create_schema.py
+73,74,1,1033738365375281,1033738550952906,0,0,"cat > create_schema.py << 'EOL'
+with open('./django/db/backends/base/schema.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the line with the function definition
+func_start = None
+for i, line in enumerate(lines):
+    if 'def _delete_composed_index' in line:
+        func_start = i
+        break
+
+if func_start is not None:
+    # Find the end of the function (next line that starts with '    def' or 'class')
+    func_end = None
+    for i in range(func_start + 1, len(lines)):
+        if lines[i].startswith('    def') or lines[i].startswith('class'):
+            func_end = i
+            break
+    
+    if func_end is None:
+        func_end = len(lines)
+    
+    # Create the new function
+    new_func = [
+        '    def _delete_composed_index(self, model, fields, constraint_kwargs, sql):\n',
+        '        meta_constraint_names = {constraint.name for constraint in model._meta.constraints}\n',
+        '        meta_index_names = {constraint.name for constraint in model._meta.indexes}\n',
+        '        columns = [model._meta.get_field(field).column for field in fields]\n',
+        '        constraint_names = self._constraint_names(\n',
+        '            model, columns, exclude=meta_constraint_names | meta_index_names,\n',
+        '            **constraint_kwargs\n',
+        '        )\n',
+        '        # When deleting an index_together, there might be a unique_together on the same\n',
+        '        # fields, so we might find multiple constraints. We should only delete the index\n',
+        '        # constraint, not the unique constraint.\n',
+        '        if not constraint_names:\n',
+        '            # No constraints found, nothing to delete\n',
+        '            return\n',
+        '        if len(constraint_names) > 1:\n',
+        '            # If we have multiple constraints, filter by the type we want to delete\n',
+        '            # (index or unique) based on the constraint_kwargs\n',
+        '            is_index = constraint_kwargs.get(""index"", False)\n',
+        '            is_unique = constraint_kwargs.get(""unique"", False)\n',
+        '            \n',
+        '            with self.connection.cursor() as cursor:\n',
+        '                constraints = self.connection.introspection.get_constraints(cursor, model._meta.db_table)\n',
+        '                \n',
+        '            # Filter constraint names based on the type we want to delete\n',
+        '            filtered_names = []\n',
+        '            for name in constraint_names:\n',
+        '                constraint = constraints.get(name, {})\n',
+        '                if is_index and constraint.get(""index"") and not constraint.get(""unique""):\n',
+        '                    filtered_names.append(name)\n',
+        '                elif is_unique and constraint.get(""unique""):\n',
+        '                    filtered_names.append(name)\n',
+        '            \n',
+        '            if len(filtered_names) != 1:\n',
+        '                # If we still don't have exactly one constraint, raise an error\n',
+        '                raise ValueError(""Found wrong number (%s) of constraints for %s(%s)"" % (\n',
+        '                    len(filtered_names),\n',
+        '                    model._meta.db_table,\n',
+        '                    "", "".join(columns),\n',
+        '                ))\n',
+        '            constraint_names = filtered_names\n',
+        '        \n',
+        '        if constraint_names:  # Only execute if we have a constraint to delete\n',
+        '            self.execute(self._delete_constraint_sql(sql, model, constraint_names[0]))\n',
+        '        \n'
+    ]
+    
+    # Replace the function
+    new_lines = lines[:func_start] + new_func + lines[func_end:]
+    
+    with open('./django/db/backends/base/schema.py', 'w') as f:
+        f.writelines(new_lines)
+EOL"
+74,75,1,1033738550958777,1033738746427009,1,1,python create_schema.py

@@ -1,0 +1,1245 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1032543612839464,1032544682452731,0,0.0,"find /testbed -type f -name ""*.py"" | grep -i validator"
+1,2,1,1032544682469743,1032544869449880,0,0.0,"cat /testbed/django/core/validators.py | grep -A 50 ""class URLValidator"""
+2,3,1,1032544869459949,1032545055674126,0,0.0,"grep -n ""class URLValidator"" /testbed/django/core/validators.py"
+3,4,1,1032545055697971,1032545243470000,0,0.0,"sed -n '74,150p' /testbed/django/core/validators.py"
+4,5,1,1032545243480500,1032545432236522,0,0.0,"cat > test_url_validator.py << 'EOL'
+from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError
+
+# Test cases based on the PR description
+validator = URLValidator()
+
+test_urls = [
+    ""http://foo/bar@example.com"",  # Should be invalid per RFC 1738
+    ""http://user:pass@example.com"",  # Valid case
+    ""http://user:@example.com"",  # Valid case with empty password
+    ""http://:pass@example.com"",  # Valid case with empty username
+    ""http://user:pass:extra@example.com"",  # Invalid - multiple colons
+    ""http://user@pass@example.com"",  # Invalid - multiple @ symbols
+    ""http://user:pa@ss@example.com"",  # Invalid - @ in password
+    ""http://user:pa:ss@example.com"",  # Invalid - : in password
+    ""http://user:pa/ss@example.com"",  # Invalid - / in password
+]
+
+for url in test_urls:
+    try:
+        validator(url)
+        print(f""✓ Valid: {url}"")
+    except ValidationError:
+        print(f""✗ Invalid: {url}"")
+EOL"
+5,6,1,1032545432240851,1032545643268270,1,1.0,python test_url_validator.py
+6,7,1,1032545643278279,1032545831839086,0,0.0,"cat > test_url_validator.py << 'EOL'
+from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError
+
+# Test cases based on the PR description
+validator = URLValidator()
+
+test_urls = [
+    ""http://foo/bar@example.com"",  # Should be invalid per RFC 1738
+    ""http://user:pass@example.com"",  # Valid case
+    ""http://user:@example.com"",  # Valid case with empty password
+    ""http://:pass@example.com"",  # Valid case with empty username
+    ""http://user:pass:extra@example.com"",  # Invalid - multiple colons
+    ""http://user@pass@example.com"",  # Invalid - multiple @ symbols
+    ""http://user:pa@ss@example.com"",  # Invalid - @ in password
+    ""http://user:pa:ss@example.com"",  # Invalid - : in password
+    ""http://user:pa/ss@example.com"",  # Invalid - / in password
+]
+
+for url in test_urls:
+    try:
+        validator(url)
+        print(f""Valid: {url}"")
+    except ValidationError:
+        print(f""Invalid: {url}"")
+EOL"
+7,8,1,1032545831843494,1032546034760217,1,1.0,python test_url_validator.py
+8,9,1,1032546034779303,1032546222165425,0,0.0,"cat > test_url_validator.py << 'EOL'
+from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError
+
+# Test cases based on the PR description
+validator = URLValidator()
+
+test_urls = [
+    ""http://foo/bar@example.com"",  # Should be invalid per RFC 1738
+    ""http://user:pass@example.com"",  # Valid case
+    ""http://user:@example.com"",  # Valid case with empty password
+    ""http://:pass@example.com"",  # Valid case with empty username
+    ""http://user:pass:extra@example.com"",  # Invalid - multiple colons
+    ""http://user@pass@example.com"",  # Invalid - multiple @ symbols
+    ""http://user:pa@ss@example.com"",  # Invalid - @ in password
+    ""http://user:pa:ss@example.com"",  # Invalid - : in password
+    ""http://user:pa/ss@example.com"",  # Invalid - / in password
+]
+
+for url in test_urls:
+    try:
+        validator(url)
+        print(""Valid: "" + url)
+    except ValidationError:
+        print(""Invalid: "" + url)
+EOL"
+9,10,1,1032546222177858,1032546577203147,0,0.0,python test_url_validator.py
+10,12,1,1032546577236279,1032546764571395,2,2.0,"cp /testbed/django/core/validators.py /testbed/django/core/validators.py.bak && sed -i '74,150c\
+class URLValidator(RegexValidator):
+    ul = '\\u00a1-\\uffff'  # unicode letters range (must not be a raw string)
+
+    # IP patterns
+    ipv4_re = r'(?:25[0-5]|2[0-4]\\d|[0-1]?\\d?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|[0-1]?\\d?\\d)){3}'
+    ipv6_re = r'\\[[0-9a-f:\\.]+'\\]  # (simple regex, validated later)
+
+    # Host patterns
+    hostname_re = r'[a-z' + ul + r'0-9](?:[a-z' + ul + r'0-9-]{0,61}[a-z' + ul + r'0-9])?'
+    # Max length for domain name labels is 63 characters per RFC 1034 sec. 3.1
+    domain_re = r'(?:\\.(?!-)[a-z' + ul + r'0-9-]{1,63}(?!<-))*'
+    tld_re = (
+        r'\\.'                                # dot
+        r'(?!-)'                             # can't start with a dash
+        r'(?:[a-z' + ul + '-]{2,63}'         # domain label
+        r'|xn--[a-z0-9]{1,59})'              # or punycode label
+        r'(?!-)'                            # can't end with a dash
+        r'\\.?'                               # may have a trailing dot
+    )
+    host_re = '(' + hostname_re + domain_re + tld_re + '|localhost)'
+
+    # Modified regex to properly validate username:password
+    # According to RFC 1738, within user and password fields, :, @, and / must be encoded
+    # So we need to ensure these characters are only present if percent-encoded
+    # First, define valid unreserved characters for user/password
+    user_password_unreserved = r'a-zA-Z0-9\\-\\.\\_\\~'
+    # Then define valid percent-encoded sequences
+    pct_encoded = r'%[0-9A-Fa-f]{2}'
+    # User and password can contain unreserved chars or percent-encoded sequences
+    user_password = r'(?:[' + user_password_unreserved + r']|' + pct_encoded + r')*'
+    
+    regex = _lazy_re_compile(
+        r'^(?:[a-z0-9\\.\\-\\+]*)://'  # scheme is validated separately
+        r'(?:' + user_password + r'(?::' + user_password + r')?@)?'  # user:pass authentication
+        r'(?:' + ipv4_re + '|' + ipv6_re + '|' + host_re + ')'  
+        r'(?::\\d{2,5})?'  # port
+        r'(?:[/?#][^\\s]*)?'  # resource path
+        r'\\Z', re.IGNORECASE)
+    message = _('Enter a valid URL.')
+    schemes = ['http', 'https', 'ftp', 'ftps']
+
+    def __init__(self, schemes=None, **kwargs):
+        super().__init__(**kwargs)
+        if schemes is not None:
+            self.schemes = schemes
+
+    def __call__(self, value):
+        # Check first if the scheme is valid
+        scheme = value.split('://')[0].lower()
+        if scheme not in self.schemes:
+            raise ValidationError(self.message, code=self.code)
+
+        # Then check full URL
+        try:
+            super().__call__(value)
+        except ValidationError as e:
+            # Trivial case failed. Try for possible IDN domain
+            if value:
+                try:
+                    scheme, netloc, path, query, fragment = urlsplit(value)
+                except ValueError:  # for example, ""Invalid IPv6 URL""
+                    raise ValidationError(self.message, code=self.code)
+                try:
+                    netloc = netloc.encode('idna').decode('ascii')  # IDN -> ACE
+                except UnicodeError:  # invalid domain part
+                    raise e
+                url = urlunsplit((scheme, netloc, path, query, fragment))
+                super().__call__(url)
+            else:
+                raise
+        else:
+            # Now verify IPv6 in the netloc part
+            host_match = re.search(r'^\\[(.+)\\](?::\\d{2,5})?$', urlsplit(value).netloc)
+            if host_match:
+                potential_ip = host_match.groups()[0]
+                try:
+                    validate_ipv6_address(potential_ip)
+                except ValidationError:
+                    raise ValidationError(self.message, code=self.code)
+
+        # The maximum length of a full host name is 253 characters per RFC 1034
+        # section 3.1. It's defined to be 255 bytes or less, but this includes
+        # one byte for the length of the name and one byte for the trailing dot
+        # that's used to indicate absolute names in DNS.
+        if len(urlsplit(value).netloc) > 253:
+            raise ValidationError(self.message, code=self.code)
+' /testbed/django/core/validators.py"
+11,13,1,1032546764588357,1032546949647377,0,0.0,"cat > /tmp/validators.py << 'EOL'
+from urllib.parse import urlsplit, urlunsplit
+import re
+
+from django.core.exceptions import ValidationError
+from django.utils.deconstruct import deconstructible
+from django.utils.functional import lazy
+from django.utils.ipv6 import is_valid_ipv6_address as validate_ipv6_address
+from django.utils.translation import gettext_lazy as _
+
+def _lazy_re_compile(regex, flags=0):
+    ""Compile regex lazily.""    
+    def _compile():
+        # Compile the regex if it hasn't been already.
+        return re.compile(regex, flags)
+    return lazy(_compile, type(re.compile('', 0)))()
+
+class RegexValidator:
+    """"""Validate that the given value matches the regular expression.""""""
+    def __init__(self, regex=None, message=None, code=None, inverse_match=False, flags=0):
+        if regex is not None:
+            self.regex = regex
+        if message is not None:
+            self.message = message
+        if code is not None:
+            self.code = code
+        self.inverse_match = inverse_match
+        self.flags = flags
+
+    def __call__(self, value):
+        """"""
+        Validate that the input contains (or does not contain) a match for the
+        regular expression.
+        """"""
+        regex_matches = self.regex.search(str(value))
+        # The regex matches if:
+        # * The value matches the regex and inverse_match is False
+        # * The value doesn't match the regex and inverse_match is True
+        if regex_matches == self.inverse_match:
+            raise ValidationError(self.message, code=self.code)
+
+class URLValidator(RegexValidator):
+    ul = '\u00a1-\uffff'  # unicode letters range (must not be a raw string)
+
+    # IP patterns
+    ipv4_re = r'(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}'
+    ipv6_re = r'\[[0-9a-f:\.]+\]'  # (simple regex, validated later)
+
+    # Host patterns
+    hostname_re = r'[a-z' + ul + r'0-9](?:[a-z' + ul + r'0-9-]{0,61}[a-z' + ul + r'0-9])?'
+    # Max length for domain name labels is 63 characters per RFC 1034 sec. 3.1
+    domain_re = r'(?:\.(?!-)[a-z' + ul + r'0-9-]{1,63}(?<!-))*'
+    tld_re = (
+        r'\.'                                # dot
+        r'(?!-)'                             # can't start with a dash
+        r'(?:[a-z' + ul + '-]{2,63}'         # domain label
+        r'|xn--[a-z0-9]{1,59})'              # or punycode label
+        r'(?<!-)'                            # can't end with a dash
+        r'\.?'                               # may have a trailing dot
+    )
+    host_re = '(' + hostname_re + domain_re + tld_re + '|localhost)'
+
+    # Modified regex to properly validate username:password
+    # According to RFC 1738, within user and password fields, :, @, and / must be encoded
+    # So we need to ensure these characters are only present if percent-encoded
+    # First, define valid unreserved characters for user/password
+    user_password_unreserved = r'a-zA-Z0-9\-\.\_\~'
+    # Then define valid percent-encoded sequences
+    pct_encoded = r'%[0-9A-Fa-f]{2}'
+    # User and password can contain unreserved chars or percent-encoded sequences
+    user_password = r'(?:[' + user_password_unreserved + r']|' + pct_encoded + r')*'
+    
+    regex = _lazy_re_compile(
+        r'^(?:[a-z0-9\.\-\+]*)://'  # scheme is validated separately
+        r'(?:' + user_password + r'(?::' + user_password + r')?@)?'  # user:pass authentication
+        r'(?:' + ipv4_re + '|' + ipv6_re + '|' + host_re + ')'  
+        r'(?::\d{2,5})?'  # port
+        r'(?:[/?#][^\s]*)?'  # resource path
+        r'\Z', re.IGNORECASE)
+    message = _('Enter a valid URL.')
+    schemes = ['http', 'https', 'ftp', 'ftps']
+
+    def __init__(self, schemes=None, **kwargs):
+        super().__init__(**kwargs)
+        if schemes is not None:
+            self.schemes = schemes
+
+    def __call__(self, value):
+        # Check first if the scheme is valid
+        scheme = value.split('://')[0].lower()
+        if scheme not in self.schemes:
+            raise ValidationError(self.message, code=self.code)
+
+        # Then check full URL
+        try:
+            super().__call__(value)
+        except ValidationError as e:
+            # Trivial case failed. Try for possible IDN domain
+            if value:
+                try:
+                    scheme, netloc, path, query, fragment = urlsplit(value)
+                except ValueError:  # for example, ""Invalid IPv6 URL""
+                    raise ValidationError(self.message, code=self.code)
+                try:
+                    netloc = netloc.encode('idna').decode('ascii')  # IDN -> ACE
+                except UnicodeError:  # invalid domain part
+                    raise e
+                url = urlunsplit((scheme, netloc, path, query, fragment))
+                super().__call__(url)
+            else:
+                raise
+        else:
+            # Now verify IPv6 in the netloc part
+            host_match = re.search(r'^\[(.+)\](?::\d{2,5})?$', urlsplit(value).netloc)
+            if host_match:
+                potential_ip = host_match.groups()[0]
+                try:
+                    validate_ipv6_address(potential_ip)
+                except ValidationError:
+                    raise ValidationError(self.message, code=self.code)
+
+        # The maximum length of a full host name is 253 characters per RFC 1034
+        # section 3.1. It's defined to be 255 bytes or less, but this includes
+        # one byte for the length of the name and one byte for the trailing dot
+        # that's used to indicate absolute names in DNS.
+        if len(urlsplit(value).netloc) > 253:
+            raise ValidationError(self.message, code=self.code)
+EOL"
+12,14,1,1032546949671632,1032547138146668,0,0.0,cp /tmp/validators.py /testbed/django/core/validators.py
+13,15,1,1032547138165834,1032547468316876,0,0.0,python test_url_validator.py
+14,16,1,1032547468336613,1032547656750725,0,0.0,"cat /testbed/django/core/validators.py | grep -A 10 ""class URLValidator"""
+15,17,1,1032547656767837,1032547845882080,0,0.0,"sed -i '/class URLValidator/,/host_re = /{ /host_re = /!d; }' /testbed/django/core/validators.py && cat >> /testbed/django/core/validators.py << 'EOL'
+    # Define characters that must be percent-encoded in user/password
+    # According to RFC 1738, :, @, and / must be encoded
+    # So we define a pattern that allows regular characters and percent-encoded sequences
+    user_password_char = r'[^\\s:@/]'  # Any character except whitespace, colon, at, or slash
+    pct_encoded = r'%[0-9A-Fa-f]{2}'  # Percent-encoded byte
+    user_password = r'(?:' + user_password_char + r'|' + pct_encoded + r')*'
+
+    regex = _lazy_re_compile(
+        r'^(?:[a-z0-9\\.\\-\\+]*)://'  # scheme is validated separately
+        r'(?:' + user_password + r'(?::' + user_password + r')?@)?'  # user:pass authentication
+        r'(?:' + ipv4_re + '|' + ipv6_re + '|' + host_re + ')'  
+        r'(?::\\d{2,5})?'  # port
+        r'(?:[/?#][^\\s]*)?'  # resource path
+        r'\\Z', re.IGNORECASE)
+EOL"
+16,18,1,1032547845885226,1032548081893888,1,1.0,python test_url_validator.py
+17,20,1,1032548081919426,1032548269289302,0,0.0,"cat > /tmp/validators_fixed.py << 'EOL'
+from urllib.parse import urlsplit, urlunsplit
+import re
+
+from django.core.exceptions import ValidationError
+from django.utils.deconstruct import deconstructible
+from django.utils.functional import lazy
+from django.utils.ipv6 import is_valid_ipv6_address as validate_ipv6_address
+from django.utils.translation import gettext_lazy as _
+
+def _lazy_re_compile(regex, flags=0):
+    ""Compile regex lazily.""    
+    def _compile():
+        # Compile the regex if it hasn't been already.
+        return re.compile(regex, flags)
+    return lazy(_compile, type(re.compile('', 0)))()
+
+class RegexValidator:
+    """"""Validate that the given value matches the regular expression.""""""
+    def __init__(self, regex=None, message=None, code=None, inverse_match=False, flags=0):
+        if regex is not None:
+            self.regex = regex
+        if message is not None:
+            self.message = message
+        if code is not None:
+            self.code = code
+        self.inverse_match = inverse_match
+        self.flags = flags
+
+    def __call__(self, value):
+        """"""
+        Validate that the input contains (or does not contain) a match for the
+        regular expression.
+        """"""
+        regex_matches = self.regex.search(str(value))
+        # The regex matches if:
+        # * The value matches the regex and inverse_match is False
+        # * The value doesn't match the regex and inverse_match is True
+        if regex_matches == self.inverse_match:
+            raise ValidationError(self.message, code=self.code)
+
+class URLValidator(RegexValidator):
+    ul = '\u00a1-\uffff'  # unicode letters range (must not be a raw string)
+
+    # IP patterns
+    ipv4_re = r'(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}'
+    ipv6_re = r'\[[0-9a-f:\.]+\]'  # (simple regex, validated later)
+
+    # Host patterns
+    hostname_re = r'[a-z' + ul + r'0-9](?:[a-z' + ul + r'0-9-]{0,61}[a-z' + ul + r'0-9])?'
+    # Max length for domain name labels is 63 characters per RFC 1034 sec. 3.1
+    domain_re = r'(?:\.(?!-)[a-z' + ul + r'0-9-]{1,63}(?<!-))*'
+    tld_re = (
+        r'\.'                                # dot
+        r'(?!-)'                             # can't start with a dash
+        r'(?:[a-z' + ul + '-]{2,63}'         # domain label
+        r'|xn--[a-z0-9]{1,59})'              # or punycode label
+        r'(?<!-)'                            # can't end with a dash
+        r'\.?'                               # may have a trailing dot
+    )
+    host_re = '(' + hostname_re + domain_re + tld_re + '|localhost)'
+
+    # For user and password, according to RFC 1738, :, @, and / must be encoded
+    # So we define a pattern that allows any character except : @ / and whitespace,
+    # or properly percent-encoded sequences
+    user_password = r'(?:[^\\s:@/]|%[0-9A-Fa-f]{2})*'
+    
+    regex = _lazy_re_compile(
+        r'^(?:[a-z0-9\.\-\+]*)://'  # scheme is validated separately
+        r'(?:' + user_password + r'(?::' + user_password + r')?@)?'  # user:pass authentication
+        r'(?:' + ipv4_re + '|' + ipv6_re + '|' + host_re + ')'  
+        r'(?::\d{2,5})?'  # port
+        r'(?:[/?#][^\s]*)?'  # resource path
+        r'\Z', re.IGNORECASE)
+    message = _('Enter a valid URL.')
+    schemes = ['http', 'https', 'ftp', 'ftps']
+
+    def __init__(self, schemes=None, **kwargs):
+        super().__init__(**kwargs)
+        if schemes is not None:
+            self.schemes = schemes
+
+    def __call__(self, value):
+        # Check first if the scheme is valid
+        scheme = value.split('://')[0].lower()
+        if scheme not in self.schemes:
+            raise ValidationError(self.message, code=self.code)
+
+        # Then check full URL
+        try:
+            super().__call__(value)
+        except ValidationError as e:
+            # Trivial case failed. Try for possible IDN domain
+            if value:
+                try:
+                    scheme, netloc, path, query, fragment = urlsplit(value)
+                except ValueError:  # for example, ""Invalid IPv6 URL""
+                    raise ValidationError(self.message, code=self.code)
+                try:
+                    netloc = netloc.encode('idna').decode('ascii')  # IDN -> ACE
+                except UnicodeError:  # invalid domain part
+                    raise e
+                url = urlunsplit((scheme, netloc, path, query, fragment))
+                super().__call__(url)
+            else:
+                raise
+        else:
+            # Now verify IPv6 in the netloc part
+            host_match = re.search(r'^\[(.+)\](?::\d{2,5})?$', urlsplit(value).netloc)
+            if host_match:
+                potential_ip = host_match.groups()[0]
+                try:
+                    validate_ipv6_address(potential_ip)
+                except ValidationError:
+                    raise ValidationError(self.message, code=self.code)
+
+        # The maximum length of a full host name is 253 characters per RFC 1034
+        # section 3.1. It's defined to be 255 bytes or less, but this includes
+        # one byte for the length of the name and one byte for the trailing dot
+        # that's used to indicate absolute names in DNS.
+        if len(urlsplit(value).netloc) > 253:
+            raise ValidationError(self.message, code=self.code)
+EOL"
+18,21,1,1032548269299131,1032548451647825,0,0.0,cp /tmp/validators_fixed.py /testbed/django/core/validators.py
+19,22,1,1032548451651192,1032548772615732,0,0.0,python test_url_validator.py
+20,23,1,1032548772690712,1032548961598649,0,0.0,"cat > test_regex_debug.py << 'EOL'
+import re
+
+# Test the regex pattern directly
+user_password = r'(?:[^\s:@/]|%[0-9A-Fa-f]{2})*'
+
+# Compile a test regex with just the user:pass part
+test_regex = re.compile(r'^(?:' + user_password + r'(?::' + user_password + r')?@)?')
+
+# Test cases for user:pass validation
+test_cases = [
+    ""user:pass@"",      # Should match
+    ""user@"",           # Should match (no colon)
+    "":@"",              # Should match (empty username)
+    ""user:@"",          # Should match (empty password)
+    ""user:pa@ss@"",     # Should NOT match (@ in password)
+    ""user:pa:ss@"",     # Should NOT match (: in password)
+    ""user:pa/ss@"",     # Should NOT match (/ in password)
+    ""user:pa%40ss@"",   # Should match (%40 is @ encoded)
+    ""user:pa%3Ass@"",   # Should match (%3A is : encoded)
+    ""user:pa%2Fss@"",   # Should match (%2F is / encoded)
+]
+
+print(""Testing user:pass regex pattern:"")
+for test in test_cases:
+    match = test_regex.match(test)
+    if match:
+        print(f""✓ Match: '{test}'"")
+    else:
+        print(f""✗ No match: '{test}'"")
+EOL"
+21,24,1,1032548961617113,1032549157491830,1,1.0,python test_regex_debug.py
+22,25,1,1032549157546868,1032549339260028,0,0.0,"cat > test_regex_debug.py << 'EOL'
+import re
+
+# Test the regex pattern directly
+user_password = r'(?:[^\\s:@/]|%[0-9A-Fa-f]{2})*'
+
+# Compile a test regex with just the user:pass part
+test_regex = re.compile(r'^(?:' + user_password + r'(?::' + user_password + r')?@)?')
+
+# Test cases for user:pass validation
+test_cases = [
+    ""user:pass@"",      # Should match
+    ""user@"",           # Should match (no colon)
+    "":@"",              # Should match (empty username)
+    ""user:@"",          # Should match (empty password)
+    ""user:pa@ss@"",     # Should NOT match (@ in password)
+    ""user:pa:ss@"",     # Should NOT match (: in password)
+    ""user:pa/ss@"",     # Should NOT match (/ in password)
+    ""user:pa%40ss@"",   # Should match (%40 is @ encoded)
+    ""user:pa%3Ass@"",   # Should match (%3A is : encoded)
+    ""user:pa%2Fss@"",   # Should match (%2F is / encoded)
+]
+
+print(""Testing user:pass regex pattern:"")
+for test in test_cases:
+    match = test_regex.match(test)
+    if match:
+        print(""✓ Match: '"" + test + ""'"")
+    else:
+        print(""✗ No match: '"" + test + ""'"")
+EOL"
+23,26,1,1032549339278763,1032549552048576,1,1.0,python test_regex_debug.py
+24,27,1,1032549552055559,1032549737464661,0,0.0,"cat > test_regex_debug.py << 'EOL'
+import re
+
+# Test the regex pattern directly
+user_password = r'(?:[^\\s:@/]|%[0-9A-Fa-f]{2})*'
+
+# Compile a test regex with just the user:pass part
+test_regex = re.compile(r'^(?:' + user_password + r'(?::' + user_password + r')?@)?')
+
+# Test cases for user:pass validation
+test_cases = [
+    ""user:pass@"",      # Should match
+    ""user@"",           # Should match (no colon)
+    "":@"",              # Should match (empty username)
+    ""user:@"",          # Should match (empty password)
+    ""user:pa@ss@"",     # Should NOT match (@ in password)
+    ""user:pa:ss@"",     # Should NOT match (: in password)
+    ""user:pa/ss@"",     # Should NOT match (/ in password)
+    ""user:pa%40ss@"",   # Should match (%40 is @ encoded)
+    ""user:pa%3Ass@"",   # Should match (%3A is : encoded)
+    ""user:pa%2Fss@"",   # Should match (%2F is / encoded)
+]
+
+print(""Testing user:pass regex pattern:"")
+for test in test_cases:
+    match = test_regex.match(test)
+    if match:
+        print(""Match: '"" + test + ""'"")
+    else:
+        print(""No match: '"" + test + ""'"")
+EOL"
+25,28,1,1032549737469219,1032549941616664,0,0.0,python test_regex_debug.py
+26,29,1,1032549941638515,1032550126454993,0,0.0,"cat > /tmp/validators_final.py << 'EOL'
+from urllib.parse import urlsplit, urlunsplit
+import re
+
+from django.core.exceptions import ValidationError
+from django.utils.deconstruct import deconstructible
+from django.utils.functional import lazy
+from django.utils.ipv6 import is_valid_ipv6_address as validate_ipv6_address
+from django.utils.translation import gettext_lazy as _
+
+def _lazy_re_compile(regex, flags=0):
+    ""Compile regex lazily.""    
+    def _compile():
+        # Compile the regex if it hasn't been already.
+        return re.compile(regex, flags)
+    return lazy(_compile, type(re.compile('', 0)))()
+
+class RegexValidator:
+    """"""Validate that the given value matches the regular expression.""""""
+    def __init__(self, regex=None, message=None, code=None, inverse_match=False, flags=0):
+        if regex is not None:
+            self.regex = regex
+        if message is not None:
+            self.message = message
+        if code is not None:
+            self.code = code
+        self.inverse_match = inverse_match
+        self.flags = flags
+
+    def __call__(self, value):
+        """"""
+        Validate that the input contains (or does not contain) a match for the
+        regular expression.
+        """"""
+        regex_matches = self.regex.search(str(value))
+        # The regex matches if:
+        # * The value matches the regex and inverse_match is False
+        # * The value doesn't match the regex and inverse_match is True
+        if regex_matches == self.inverse_match:
+            raise ValidationError(self.message, code=self.code)
+
+class URLValidator(RegexValidator):
+    ul = '\u00a1-\uffff'  # unicode letters range (must not be a raw string)
+
+    # IP patterns
+    ipv4_re = r'(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}'
+    ipv6_re = r'\[[0-9a-f:\.]+\]'  # (simple regex, validated later)
+
+    # Host patterns
+    hostname_re = r'[a-z' + ul + r'0-9](?:[a-z' + ul + r'0-9-]{0,61}[a-z' + ul + r'0-9])?'
+    # Max length for domain name labels is 63 characters per RFC 1034 sec. 3.1
+    domain_re = r'(?:\.(?!-)[a-z' + ul + r'0-9-]{1,63}(?<!-))*'
+    tld_re = (
+        r'\.'                                # dot
+        r'(?!-)'                             # can't start with a dash
+        r'(?:[a-z' + ul + '-]{2,63}'         # domain label
+        r'|xn--[a-z0-9]{1,59})'              # or punycode label
+        r'(?<!-)'                            # can't end with a dash
+        r'\.?'                               # may have a trailing dot
+    )
+    host_re = '(' + hostname_re + domain_re + tld_re + '|localhost)'
+
+    # Original regex that accepts any non-whitespace for user:pass
+    # We'll use this for basic URL structure validation
+    regex = _lazy_re_compile(
+        r'^(?:[a-z0-9\.\-\+]*)://'  # scheme is validated separately
+        r'(?:\S+(?::\S*)?@)?'  # user:pass authentication (basic)
+        r'(?:' + ipv4_re + '|' + ipv6_re + '|' + host_re + ')'  
+        r'(?::\d{2,5})?'  # port
+        r'(?:[/?#][^\s]*)?'  # resource path
+        r'\Z', re.IGNORECASE)
+    message = _('Enter a valid URL.')
+    schemes = ['http', 'https', 'ftp', 'ftps']
+
+    def __init__(self, schemes=None, **kwargs):
+        super().__init__(**kwargs)
+        if schemes is not None:
+            self.schemes = schemes
+
+    def __call__(self, value):
+        # Check first if the scheme is valid
+        scheme = value.split('://')[0].lower()
+        if scheme not in self.schemes:
+            raise ValidationError(self.message, code=self.code)
+
+        # First, check the basic URL structure
+        try:
+            super().__call__(value)
+        except ValidationError as e:
+            # Trivial case failed. Try for possible IDN domain
+            if value:
+                try:
+                    scheme, netloc, path, query, fragment = urlsplit(value)
+                except ValueError:  # for example, ""Invalid IPv6 URL""
+                    raise ValidationError(self.message, code=self.code)
+                try:
+                    netloc = netloc.encode('idna').decode('ascii')  # IDN -> ACE
+                except UnicodeError:  # invalid domain part
+                    raise e
+                url = urlunsplit((scheme, netloc, path, query, fragment))
+                super().__call__(url)
+            else:
+                raise
+        else:
+            # Now verify IPv6 in the netloc part
+            host_match = re.search(r'^\[(.+)\](?::\d{2,5})?$', urlsplit(value).netloc)
+            if host_match:
+                potential_ip = host_match.groups()[0]
+                try:
+                    validate_ipv6_address(potential_ip)
+                except ValidationError:
+                    raise ValidationError(self.message, code=self.code)
+
+        # The maximum length of a full host name is 253 characters per RFC 1034
+        # section 3.1. It's defined to be 255 bytes or less, but this includes
+        # one byte for the length of the name and one byte for the trailing dot
+        # that's used to indicate absolute names in DNS.
+        if len(urlsplit(value).netloc) > 253:
+            raise ValidationError(self.message, code=self.code)
+            
+        # Additional validation for user:password according to RFC 1738
+        # Characters :, @, / must be encoded in user and password
+        if '@' in value:
+            # Extract the part before the host
+            scheme_host = value.split('//')[1]  # Get part after //
+            if '@' in scheme_host:
+                user_pass_part = scheme_host.split('@')[0]
+                if '@' in user_pass_part:  # There's an @ in the user/pass section
+                    # Split into user and password if colon exists
+                    if ':' in user_pass_part:
+                        user, password = user_pass_part.split(':', 1)
+                    else:
+                        user, password = user_pass_part, """"
+                    
+                    # Check for invalid characters in user and password
+                    # They should not contain : @ / unless percent-encoded
+                    for part_name, part_value in [(""user"", user), (""password"", password)]:
+                        i = 0
+                        while i < len(part_value):
+                            if part_value[i] in ':@/':
+                                # Found a special character - check if it's percent-encoded
+                                if i + 2 < len(part_value) and part_value[i] == '%' and \
+                                   all(c.upper() in '0123456789ABCDEF' for c in part_value[i+1:i+3]):
+                                    # It's a valid percent-encoded sequence
+                                    i += 3
+                                else:
+                                    # Found an unencoded special character
+                                    raise ValidationError(self.message, code=self.code)
+                            else:
+                                i += 1
+EOL"
+27,30,1,1032550126471895,1032550313780748,0,0.0,cp /tmp/validators_final.py /testbed/django/core/validators.py
+28,31,1,1032550313785848,1032550639620020,0,0.0,python test_url_validator.py
+29,32,1,1032550639635148,1032550823554397,0,0.0,"cat > debug_url_parsing.py << 'EOL'
+from urllib.parse import urlsplit
+
+test_urls = [
+    ""http://foo/bar@example.com"",
+    ""http://user:pa@ss@example.com"",
+    ""http://user:pa:ss@example.com"",
+    ""http://user:pa/ss@example.com""
+]
+
+for url in test_urls:
+    try:
+        result = urlsplit(url)
+        print(f""URL: {url}"")
+        print(f""  Scheme: {result.scheme}"")
+        print(f""  Netloc: {result.netloc}"")
+        print(f""  Path: {result.path}"")
+        print(f""  Username: {result.username if hasattr(result, 'username') else 'N/A'}"")
+        print(f""  Password: {result.password if hasattr(result, 'password') else 'N/A'}"")
+        print()
+    except Exception as e:
+        print(f""Error parsing {url}: {e}\n"")
+EOL"
+30,33,1,1032550823563083,1032551020691125,1,1.0,python debug_url_parsing.py
+31,34,1,1032551020712726,1032551203237974,0,0.0,"cat > debug_url_parsing.py << 'EOL'
+from urllib.parse import urlsplit
+
+test_urls = [
+    ""http://foo/bar@example.com"",
+    ""http://user:pa@ss@example.com"",
+    ""http://user:pa:ss@example.com"",
+    ""http://user:pa/ss@example.com""
+]
+
+for url in test_urls:
+    try:
+        result = urlsplit(url)
+        print(""URL: "" + url)
+        print(""  Scheme: "" + result.scheme)
+        print(""  Netloc: "" + result.netloc)
+        print(""  Path: "" + result.path)
+        username = ""N/A""
+        password = ""N/A""
+        if hasattr(result, 'username'):
+            username = result.username or ""N/A""
+        if hasattr(result, 'password'):
+            password = result.password or ""N/A""
+        print(""  Username: "" + username)
+        print(""  Password: "" + password)
+        print()
+    except Exception as e:
+        print(""Error parsing "" + url + "": "" + str(e) + ""\n"")
+EOL"
+32,35,1,1032551203253373,1032551403865974,0,0.0,python debug_url_parsing.py
+33,36,1,1032551403886332,1032551590835979,0,0.0,"cat > /tmp/validators_final.py << 'EOL'
+from urllib.parse import urlsplit, urlunsplit
+import re
+
+from django.core.exceptions import ValidationError
+from django.utils.deconstruct import deconstructible
+from django.utils.functional import lazy
+from django.utils.ipv6 import is_valid_ipv6_address as validate_ipv6_address
+from django.utils.translation import gettext_lazy as _
+
+def _lazy_re_compile(regex, flags=0):
+    ""Compile regex lazily.""    
+    def _compile():
+        # Compile the regex if it hasn't been already.
+        return re.compile(regex, flags)
+    return lazy(_compile, type(re.compile('', 0)))()
+
+class RegexValidator:
+    """"""Validate that the given value matches the regular expression.""""""
+    def __init__(self, regex=None, message=None, code=None, inverse_match=False, flags=0):
+        if regex is not None:
+            self.regex = regex
+        if message is not None:
+            self.message = message
+        if code is not None:
+            self.code = code
+        self.inverse_match = inverse_match
+        self.flags = flags
+
+    def __call__(self, value):
+        """"""
+        Validate that the input contains (or does not contain) a match for the
+        regular expression.
+        """"""
+        regex_matches = self.regex.search(str(value))
+        # The regex matches if:
+        # * The value matches the regex and inverse_match is False
+        # * The value doesn't match the regex and inverse_match is True
+        if regex_matches == self.inverse_match:
+            raise ValidationError(self.message, code=self.code)
+
+class URLValidator(RegexValidator):
+    ul = '\u00a1-\uffff'  # unicode letters range (must not be a raw string)
+
+    # IP patterns
+    ipv4_re = r'(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}'
+    ipv6_re = r'\[[0-9a-f:\.]+\]'  # (simple regex, validated later)
+
+    # Host patterns
+    hostname_re = r'[a-z' + ul + r'0-9](?:[a-z' + ul + r'0-9-]{0,61}[a-z' + ul + r'0-9])?'
+    # Max length for domain name labels is 63 characters per RFC 1034 sec. 3.1
+    domain_re = r'(?:\.(?!-)[a-z' + ul + r'0-9-]{1,63}(?<!-))*'
+    tld_re = (
+        r'\.'                                # dot
+        r'(?!-)'                             # can't start with a dash
+        r'(?:[a-z' + ul + '-]{2,63}'         # domain label
+        r'|xn--[a-z0-9]{1,59})'              # or punycode label
+        r'(?<!-)'                            # can't end with a dash
+        r'\.?'                               # may have a trailing dot
+    )
+    host_re = '(' + hostname_re + domain_re + tld_re + '|localhost)'
+
+    # Use the original regex for basic structure validation
+    regex = _lazy_re_compile(
+        r'^(?:[a-z0-9\.\-\+]*)://'  # scheme is validated separately
+        r'(?:\S+(?::\S*)?@)?'  # user:pass authentication
+        r'(?:' + ipv4_re + '|' + ipv6_re + '|' + host_re + ')'  
+        r'(?::\d{2,5})?'  # port
+        r'(?:[/?#][^\s]*)?'  # resource path
+        r'\Z', re.IGNORECASE)
+    message = _('Enter a valid URL.')
+    schemes = ['http', 'https', 'ftp', 'ftps']
+
+    def __init__(self, schemes=None, **kwargs):
+        super().__init__(**kwargs)
+        if schemes is not None:
+            self.schemes = schemes
+
+    def __call__(self, value):
+        # Check first if the scheme is valid
+        scheme = value.split('://')[0].lower()
+        if scheme not in self.schemes:
+            raise ValidationError(self.message, code=self.code)
+
+        # First, check the basic URL structure
+        try:
+            super().__call__(value)
+        except ValidationError as e:
+            # Trivial case failed. Try for possible IDN domain
+            if value:
+                try:
+                    scheme, netloc, path, query, fragment = urlsplit(value)
+                except ValueError:  # for example, ""Invalid IPv6 URL""
+                    raise ValidationError(self.message, code=self.code)
+                try:
+                    netloc = netloc.encode('idna').decode('ascii')  # IDN -> ACE
+                except UnicodeError:  # invalid domain part
+                    raise e
+                url = urlunsplit((scheme, netloc, path, query, fragment))
+                super().__call__(url)
+            else:
+                raise
+        else:
+            # Now verify IPv6 in the netloc part
+            host_match = re.search(r'^\[(.+)\](?::\d{2,5})?$', urlsplit(value).netloc)
+            if host_match:
+                potential_ip = host_match.groups()[0]
+                try:
+                    validate_ipv6_address(potential_ip)
+                except ValidationError:
+                    raise ValidationError(self.message, code=self.code)
+
+        # The maximum length of a full host name is 253 characters per RFC 1034
+        # section 1. It's defined to be 255 bytes or less, but this includes
+        # one byte for the length of the name and one byte for the trailing dot
+        # that's used to indicate absolute names in DNS.
+        if len(urlsplit(value).netloc) > 253:
+            raise ValidationError(self.message, code=self.code)
+            
+        # Additional validation for user:password according to RFC 1738
+        # Characters :, @, / must be encoded in user and password
+        # Extract the user:password part if it exists
+        if '://' in value:
+            # Get the part after // and before the next /
+            after_scheme = value.split('://', 1)[1]
+            
+            # Find the first / after the scheme (start of path)
+            path_start = len(after_scheme)
+            for i, c in enumerate(after_scheme):
+                if c == '/' and i > 0:
+                    path_start = i
+                    break
+                    
+            # The authority part is before the path
+            authority = after_scheme[:path_start]
+            
+            # If there's an @ in the authority, it might contain user:password
+            if '@' in authority:
+                # Split by @, but need to be careful about multiple @ signs
+                # The last @ separates the user:password from the host
+                at_index = authority.rfind('@')
+                user_pass_part = authority[:at_index]
+                
+                # Now check if user_pass_part contains : to separate user and password
+                if ':' in user_pass_part:
+                    user, password = user_pass_part.split(':', 1)
+                else:
+                    user, password = user_pass_part, """"
+                    
+                # Validate that user and password don't contain : @ / unless percent-encoded
+                for part_name, part_value in [(""user"", user), (""password"", password)]:
+                    i = 0
+                    while i < len(part_value):
+                        if part_value[i] in ':@/':
+                            # Found a special character - check if it's percent-encoded
+                            if i + 2 < len(part_value) and part_value[i] == '%' and \
+                               all(c.upper() in '0123456789ABCDEF' for c in part_value[i+1:i+3]):
+                                # It's a valid percent-encoded sequence
+                                i += 3
+                            else:
+                                # Found an unencoded special character
+                                raise ValidationError(self.message, code=self.code)
+                        else:
+                            i += 1
+EOL"
+34,37,1,1032551590849033,1032551773955671,0,0.0,cp /tmp/validators_final.py /testbed/django/core/validators.py
+35,38,1,1032551773976780,1032552093258856,1,1.0,python test_url_validator.py
+36,39,1,1032552093273423,1032552282250610,0,0.0,"cat > /tmp/validators_final.py << 'EOL'
+from urllib.parse import urlsplit, urlunsplit
+import re
+
+from django.core.exceptions import ValidationError
+from django.utils.deconstruct import deconstructible
+from django.utils.functional import lazy
+from django.utils.ipv6 import is_valid_ipv6_address as validate_ipv6_address
+from django.utils.translation import gettext_lazy as _
+
+def _lazy_re_compile(regex, flags=0):
+    ""Compile regex lazily.""    
+    def _compile():
+        # Compile the regex if it hasn't been already.
+        return re.compile(regex, flags)
+    return lazy(_compile, type(re.compile('', 0)))()
+
+class RegexValidator:
+    """"""Validate that the given value matches the regular expression.""""""
+    def __init__(self, regex=None, message=None, code=None, inverse_match=False, flags=0):
+        if regex is not None:
+            self.regex = regex
+        if message is not None:
+            self.message = message
+        if code is not None:
+            self.code = code
+        self.inverse_match = inverse_match
+        self.flags = flags
+
+    def __call__(self, value):
+        """"""
+        Validate that the input contains (or does not contain) a match for the
+        regular expression.
+        """"""
+        regex_matches = self.regex.search(str(value))
+        # The regex matches if:
+        # * The value matches the regex and inverse_match is False
+        # * The value doesn't match the regex and inverse_match is True
+        if regex_matches == self.inverse_match:
+            raise ValidationError(self.message, code=self.code)
+
+class URLValidator(RegexValidator):
+    ul = '\u00a1-\uffff'  # unicode letters range (must not be a raw string)
+
+    # IP patterns
+    ipv4_re = r'(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}'
+    ipv6_re = r'\[[0-9a-f:\.]+\]'  # (simple regex, validated later)
+
+    # Host patterns
+    hostname_re = r'[a-z' + ul + r'0-9](?:[a-z' + ul + r'0-9-]{0,61}[a-z' + ul + r'0-9])?'
+    # Max length for domain name labels is 63 characters per RFC 1034 sec. 3.1
+    domain_re = r'(?:\.(?!-)[a-z' + ul + r'0-9-]{1,63}(?<!-))*'
+    tld_re = (
+        r'\.'                                # dot
+        r'(?!-)'                             # can't start with a dash
+        r'(?:[a-z' + ul + '-]{2,63}'         # domain label
+        r'|xn--[a-z0-9]{1,59})'              # or punycode label
+        r'(?<!-)'                            # can't end with a dash
+        r'\.?'                               # may have a trailing dot
+    )
+    host_re = '(' + hostname_re + domain_re + tld_re + '|localhost)'
+
+    # Use the original regex for basic structure validation
+    regex = _lazy_re_compile(
+        r'^(?:[a-z0-9\.\-\+]*)://'  # scheme is validated separately
+        r'(?:\S+(?::\S*)?@)?'  # user:pass authentication
+        r'(?:' + ipv4_re + '|' + ipv6_re + '|' + host_re + ')'  
+        r'(?::\d{2,5})?'  # port
+        r'(?:[/?#][^\s]*)?'  # resource path
+        r'\Z', re.IGNORECASE)
+    message = _('Enter a valid URL.')
+    code = 'invalid'
+    schemes = ['http', 'https', 'ftp', 'ftps']
+
+    def __init__(self, schemes=None, **kwargs):
+        super().__init__(**kwargs)
+        if schemes is not None:
+            self.schemes = schemes
+
+    def __call__(self, value):
+        # Check first if the scheme is valid
+        scheme = value.split('://')[0].lower()
+        if scheme not in self.schemes:
+            raise ValidationError(self.message, code=self.code)
+
+        # First, check the basic URL structure
+        try:
+            super().__call__(value)
+        except ValidationError as e:
+            # Trivial case failed. Try for possible IDN domain
+            if value:
+                try:
+                    scheme, netloc, path, query, fragment = urlsplit(value)
+                except ValueError:  # for example, ""Invalid IPv6 URL""
+                    raise ValidationError(self.message, code=self.code)
+                try:
+                    netloc = netloc.encode('idna').decode('ascii')  # IDN -> ACE
+                except UnicodeError:  # invalid domain part
+                    raise e
+                url = urlunsplit((scheme, netloc, path, query, fragment))
+                super().__call__(url)
+            else:
+                raise
+        else:
+            # Now verify IPv6 in the netloc part
+            host_match = re.search(r'^\[(.+)\](?::\d{2,5})?$', urlsplit(value).netloc)
+            if host_match:
+                potential_ip = host_match.groups()[0]
+                try:
+                    validate_ipv6_address(potential_ip)
+                except ValidationError:
+                    raise ValidationError(self.message, code=self.code)
+
+        # The maximum length of a full host name is 253 characters per RFC 1034
+        # section 1. It's defined to be 255 bytes or less, but this includes
+        # one byte for the length of the name and one byte for the trailing dot
+        # that's used to indicate absolute names in DNS.
+        if len(urlsplit(value).netloc) > 253:
+            raise ValidationError(self.message, code=self.code)
+            
+        # Additional validation for user:password according to RFC 1738
+        # Characters :, @, / must be encoded in user and password
+        # Extract the user:password part if it exists
+        if '://' in value:
+            # Get the part after // and before the next /
+            after_scheme = value.split('://', 1)[1]
+            
+            # Find the first / after the scheme (start of path)
+            path_start = len(after_scheme)
+            for i, c in enumerate(after_scheme):
+                if c == '/' and i > 0:
+                    path_start = i
+                    break
+                    
+            # The authority part is before the path
+            authority = after_scheme[:path_start]
+            
+            # If there's an @ in the authority, it might contain user:password
+            if '@' in authority:
+                # Split by @, but need to be careful about multiple @ signs
+                # The last @ separates the user:password from the host
+                at_index = authority.rfind('@')
+                user_pass_part = authority[:at_index]
+                
+                # Now check if user_pass_part contains : to separate user and password
+                if ':' in user_pass_part:
+                    user, password = user_pass_part.split(':', 1)
+                else:
+                    user, password = user_pass_part, """"
+                    
+                # Validate that user and password don't contain : @ / unless percent-encoded
+                for part_name, part_value in [(""user"", user), (""password"", password)]:
+                    i = 0
+                    while i < len(part_value):
+                        if part_value[i] in ':@/':
+                            # Found a special character - check if it's percent-encoded
+                            if i + 2 < len(part_value) and part_value[i] == '%' and \
+                               all(c.upper() in '0123456789ABCDEF' for c in part_value[i+1:i+3]):
+                                # It's a valid percent-encoded sequence
+                                i += 3
+                            else:
+                                # Found an unencoded special character
+                                raise ValidationError(self.message, code=self.code)
+                        else:
+                            i += 1
+EOL"
+37,40,1,1032552282263986,1032552469124601,0,0.0,cp /tmp/validators_final.py /testbed/django/core/validators.py
+38,41,1,1032552469136152,1032552795900391,0,0.0,python test_url_validator.py
+39,42,1,1032552795974184,1032552983143306,0,0.0,"cat > /tmp/validators_final.py << 'EOL'
+from urllib.parse import urlsplit, urlunsplit
+import re
+
+from django.core.exceptions import ValidationError
+from django.utils.deconstruct import deconstructible
+from django.utils.functional import lazy
+from django.utils.ipv6 import is_valid_ipv6_address as validate_ipv6_address
+from django.utils.translation import gettext_lazy as _
+
+def _lazy_re_compile(regex, flags=0):
+    ""Compile regex lazily.""    
+    def _compile():
+        # Compile the regex if it hasn't been already.
+        return re.compile(regex, flags)
+    return lazy(_compile, type(re.compile('', 0)))()
+
+class RegexValidator:
+    """"""Validate that the given value matches the regular expression.""""""
+    def __init__(self, regex=None, message=None, code=None, inverse_match=False, flags=0):
+        if regex is not None:
+            self.regex = regex
+        if message is not None:
+            self.message = message
+        if code is not None:
+            self.code = code
+        self.inverse_match = inverse_match
+        self.flags = flags
+
+    def __call__(self, value):
+        """"""
+        Validate that the input contains (or does not contain) a match for the
+        regular expression.
+        """"""
+        regex_matches = self.regex.search(str(value))
+        # The regex matches if:
+        # * The value matches the regex and inverse_match is False
+        # * The value doesn't match the regex and inverse_match is True
+        if regex_matches == self.inverse_match:
+            raise ValidationError(self.message, code=self.code)
+
+class URLValidator(RegexValidator):
+    ul = '\u00a1-\uffff'  # unicode letters range (must not be a raw string)
+
+    # IP patterns
+    ipv4_re = r'(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}'
+    ipv6_re = r'\[[0-9a-f:\.]+\]'  # (simple regex, validated later)
+
+    # Host patterns
+    hostname_re = r'[a-z' + ul + r'0-9](?:[a-z' + ul + r'0-9-]{0,61}[a-z' + ul + r'0-9])?'
+    # Max length for domain name labels is 63 characters per RFC 1034 sec. 3.1
+    domain_re = r'(?:\.(?!-)[a-z' + ul + r'0-9-]{1,63}(?<!-))*'
+    tld_re = (
+        r'\.'                                # dot
+        r'(?!-)'                             # can't start with a dash
+        r'(?:[a-z' + ul + '-]{2,63}'         # domain label
+        r'|xn--[a-z0-9]{1,59})'              # or punycode label
+        r'(?<!-)'                            # can't end with a dash
+        r'\.?'                               # may have a trailing dot
+    )
+    host_re = '(' + hostname_re + domain_re + tld_re + '|localhost)'
+
+    # Use the original regex for basic structure validation
+    regex = _lazy_re_compile(
+        r'^(?:[a-z0-9\.\-\+]*)://'  # scheme is validated separately
+        r'(?:\S+(?::\S*)?@)?'  # user:pass authentication
+        r'(?:' + ipv4_re + '|' + ipv6_re + '|' + host_re + ')'  
+        r'(?::\d{2,5})?'  # port
+        r'(?:[/?#][^\s]*)?'  # resource path
+        r'\Z', re.IGNORECASE)
+    message = _('Enter a valid URL.')
+    code = 'invalid'
+    schemes = ['http', 'https', 'ftp', 'ftps']
+
+    def __init__(self, schemes=None, **kwargs):
+        super().__init__(**kwargs)
+        if schemes is not None:
+            self.schemes = schemes
+
+    def __call__(self, value):
+        # Check first if the scheme is valid
+        scheme = value.split('://')[0].lower()
+        if scheme not in self.schemes:
+            raise ValidationError(self.message, code=self.code)
+
+        # First, check the basic URL structure
+        try:
+            super().__call__(value)
+        except ValidationError as e:
+            # Trivial case failed. Try for possible IDN domain
+            if value:
+                try:
+                    scheme, netloc, path, query, fragment = urlsplit(value)
+                except ValueError:  # for example, ""Invalid IPv6 URL""
+                    raise ValidationError(self.message, code=self.code)
+                try:
+                    netloc = netloc.encode('idna').decode('ascii')  # IDN -> ACE
+                except UnicodeError:  # invalid domain part
+                    raise e
+                url = urlunsplit((scheme, netloc, path, query, fragment))
+                super().__call__(url)
+            else:
+                raise
+        else:
+            # Now verify IPv6 in the netloc part
+            host_match = re.search(r'^\[(.+)\](?::\d{2,5})?$', urlsplit(value).netloc)
+            if host_match:
+                potential_ip = host_match.groups()[0]
+                try:
+                    validate_ipv6_address(potential_ip)
+                except ValidationError:
+                    raise ValidationError(self.message, code=self.code)
+
+        # The maximum length of a full host name is 253 characters per RFC 1034
+        # section 1. It's defined to be 255 bytes or less, but this includes
+        # one byte for the length of the name and one byte for the trailing dot
+        # that's used to indicate absolute names in DNS.
+        if len(urlsplit(value).netloc) > 253:
+            raise ValidationError(self.message, code=self.code)
+            
+        # Additional validation for user:password according to RFC 1738
+        # Characters :, @, / must be encoded in user and password
+        # Extract the user:password part if it exists
+        if '://' in value:
+            # Get the part after //
+            after_scheme = value.split('://', 1)[1]
+            
+            # Find the first @ from the right (separates user:pass from host)
+            at_index = after_scheme.rfind('@')
+            if at_index != -1:
+                # The user:password part is before the @
+                user_pass_part = after_scheme[:at_index]
+                
+                # Now check if user_pass_part contains : to separate user and password
+                if ':' in user_pass_part:
+                    user, password = user_pass_part.split(':', 1)
+                else:
+                    user, password = user_pass_part, """"
+                    
+                # Validate that user and password don't contain : @ / unless percent-encoded
+                for part_name, part_value in [(""user"", user), (""password"", password)]:
+                    i = 0
+                    while i < len(part_value):
+                        if part_value[i] in ':@/':
+                            # Found a special character - check if it's percent-encoded
+                            if i + 2 < len(part_value) and part_value[i] == '%' and \
+                               all(c.upper() in '0123456789ABCDEF' for c in part_value[i+1:i+3]):
+                                # It's a valid percent-encoded sequence
+                                i += 3
+                            else:
+                                # Found an unencoded special character
+                                raise ValidationError(self.message, code=self.code)
+                        else:
+                            i += 1
+EOL"
+40,43,1,1032552983154788,1032553165590829,0,0.0,cp /tmp/validators_final.py /testbed/django/core/validators.py
+41,44,1,1032553165600117,1032553498278969,0,0.0,python test_url_validator.py
+42,45,1,1032553498371662,1032553696107387,0,0.0,git diff -- /testbed/django/core/validators.py > patch.txt
+43,46,1,1032553696125341,1032553880212534,0,0.0,cat patch.txt
+44,47,1,1032553880215850,1032554063384933,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

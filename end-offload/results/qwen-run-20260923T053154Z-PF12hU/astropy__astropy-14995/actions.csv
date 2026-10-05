@@ -1,0 +1,70 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1032434263244950,1032434598919283,0,0.0,"find /testbed -type f -name ""*.py"" | grep -i nddata"
+1,2,1,1032434598937497,1032434782047858,1,1.0,"grep -n ""class NDDataRef"" /testbed/astropy/nddata/nddata.py"
+2,3,1,1032434782063408,1032434964886461,1,1.0,"grep -n ""class NDDataRef"" /testbed/astropy/nddata/nddata_base.py"
+3,4,1,1032434964903854,1032436860569414,0,0.0,"find /testbed -type f -name ""*.py"" -exec grep -l ""NDDataRef"" {} \;"
+4,5,1,1032436860579052,1032437043513333,0,0.0,"grep -A 20 ""class NDDataRef"" /testbed/astropy/nddata/nddata_withmixins.py"
+5,6,1,1032437043537208,1032437229425094,0,0.0,cat /testbed/astropy/nddata/mixins/ndarithmetic.py
+6,7,1,1032437229434873,1032437414374954,0,0.0,"grep -A 50 ""def _arithmetic"" /testbed/astropy/nddata/mixins/ndarithmetic.py"
+7,8,1,1032437414385073,1032437608675551,0,0.0,"sed -n '/def _arithmetic_mask/,/^    @sharedmethod/p' /testbed/astropy/nddata/mixins/ndarithmetic.py"
+8,9,1,1032437608684297,1032437797643994,0,0.0,cat > reproduce_issue.py
+9,10,1,1032437797653802,1032438025227638,0,0.0,python reproduce_issue.py
+10,11,1,1032438025242186,1032438215972728,0,0.0,"cp /testbed/astropy/nddata/mixins/ndarithmetic.py /testbed/astropy/nddata/mixins/ndarithmetic.py.bak && sed -i '/def _arithmetic_mask/,/^    @sharedmethod/c\
+    def _arithmetic_mask(self, operation, operand, handle_mask, axis=None, **kwds):\n        """"""\n        Calculate the resulting mask.\n\n        This is implemented as the piecewise ``or`` operation if both have a\n        mask.\n\n        Parameters\n        ----------\n        operation : callable\n            see :meth:`NDArithmeticMixin._arithmetic` parameter description.\n            By default, the ``operation`` will be ignored.\n\n        operand : `NDData`-like instance\n            The second operand wrapped in an instance of the same class as\n            self.\n\n        handle_mask : callable\n            see :meth:`NDArithmeticMixin.add`\n\n        kwds :\n            Additional parameters given to ``handle_mask``.\n\n        Returns\n        -------\n        result_mask : any type\n            If only one mask was present this mask is returned.\n            If neither had a mask ``None`` is returned. Otherwise\n            ``handle_mask`` must create (and copy) the returned mask.\n        """"""\n        # If handle_mask is None, return None\n        if handle_mask is None:\n            return None\n        \n        # Handle cases where one operand has no mask\n        if self.mask is None and operand is not None and operand.mask is not None:\n            # Make a copy so there is no reference in the result.\n            return deepcopy(operand.mask)\n        elif self.mask is not None and (operand is None or operand.mask is None):\n            # Make a copy so there is no reference in the result.\n            return deepcopy(self.mask)\n        elif self.mask is None and (operand is None or operand.mask is None):\n            return None\n        else:\n            # Both operands have masks, apply the handle_mask function\n            return handle_mask(self.mask, operand.mask, **kwds)\n\n    def _arithmetic_wcs', /testbed/astropy/nddata/mixins/ndarithmetic.py"
+11,12,1,1032438216014867,1032438431646449,0,0.0,python reproduce_issue.py
+12,13,1,1032438431665996,1032438619004798,0,0.0,cat > detailed_test.py
+13,14,1,1032438619013454,1032438829130863,0,0.0,python detailed_test.py
+14,15,1,1032438829149148,1032439013223627,0,0.0,cat > detailed_test.py
+15,16,1,1032439013240269,1032439224263002,0,0.0,python detailed_test.py
+16,17,1,1032439224270206,1032439434859719,0,0.0,"python -c ""print('Hello, World!')"""
+17,18,1,1032439434867073,1032439619121761,0,0.0,cat > detailed_test.py
+18,19,1,1032439619137130,1032440110467224,0,0.0,"python -c ""import sys; print('Python path:', sys.path); import astropy; print('Astropy version:', astropy.__version__)"""
+19,20,1,1032440110476401,1032440322299403,0,0.0,python detailed_test.py
+20,21,1,1032440322308480,1032440508474166,0,0.0,cat > minimal_test.py
+21,22,1,1032440508491629,1032440699244643,0,0.0,ls -la minimal_test.py && cat minimal_test.py
+22,23,1,1032440699257607,1032440881636163,0,0.0,"echo ""import numpy as np\nfrom astropy.nddata import NDDataRef\n\nprint(\""Starting minimal test\"")\n\n# Create test data\narray = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])\nmask = np.array([[0, 1, 64], [8, 0, 1], [2, 1, 0]])\n\n# Create NDDataRef instances\nnref_nomask = NDDataRef(array)\nnref_mask = NDDataRef(array, mask=mask)\n\nprint(f\""nref_nomask.mask: {nref_nomask.mask}\"")\nprint(f\""nref_mask.mask: {nref_mask.mask}\"")\n\n# Test mask * constant\ntry:\n    result = nref_mask.multiply(1., handle_mask=np.bitwise_or)\n    print(f\""Result of mask * constant: {result.mask}\"")\nexcept Exception as e:\n    print(f\""Error in mask * constant: {type(e).__name__}: {e}\"")\n\n# Test mask * no mask\ntry:\n    result = nref_mask.multiply(nref_nomask, handle_mask=np.bitwise_or)\n    print(f\""Result of mask * no mask: {result.mask}\"")\nexcept Exception as e:\n    print(f\""Error in mask * no mask: {type(e).__name__}: {e}\"")"" > minimal_test.py"
+23,24,1,1032440881645220,1032441097682231,1,1.0,ls -la minimal_test.py && cat minimal_test.py && python minimal_test.py
+24,25,1,1032441097696528,1032441287723343,0,0.0,"cat > minimal_test.py << 'EOL'
+import numpy as np
+from astropy.nddata import NDDataRef
+
+print(""Starting minimal test"")
+
+# Create test data
+array = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
+mask = np.array([[0, 1, 64], [8, 0, 1], [2, 1, 0]])
+
+# Create NDDataRef instances
+nref_nomask = NDDataRef(array)
+nref_mask = NDDataRef(array, mask=mask)
+
+print(f""nref_nomask.mask: {nref_nomask.mask}"")
+print(f""nref_mask.mask: {nref_mask.mask}"")
+
+# Test mask * constant
+try:
+    result = nref_mask.multiply(1., handle_mask=np.bitwise_or)
+    print(f""Result of mask * constant: {result.mask}"")
+except Exception as e:
+    print(f""Error in mask * constant: {type(e).__name__}: {e}"")
+
+# Test mask * no mask
+try:
+    result = nref_mask.multiply(nref_nomask, handle_mask=np.bitwise_or)
+    print(f""Result of mask * no mask: {result.mask}"")
+except Exception as e:
+    print(f""Error in mask * no mask: {type(e).__name__}: {e}"")
+EOL"
+25,26,1,1032441287727731,1032442386974297,1,1.0,cat minimal_test.py && python minimal_test.py
+26,27,1,1032442386982513,1032442578877640,0,0.0,"cp /testbed/astropy/nddata/mixins/ndarithmetic.py.bak /testbed/astropy/nddata/mixins/ndarithmetic.py && sed -i '/def _arithmetic_mask/,/^    def _arithmetic_wcs/c\
+    def _arithmetic_mask(self, operation, operand, handle_mask, axis=None, **kwds):\n        """"""\n        Calculate the resulting mask.\n\n        This is implemented as the piecewise ``or`` operation if both have a\n        mask.\n\n        Parameters\n        ----------\n        operation : callable\n            see :meth:`NDArithmeticMixin._arithmetic` parameter description.\n            By default, the ``operation`` will be ignored.\n\n        operand : `NDData`-like instance\n            The second operand wrapped in an instance of the same class as\n            self.\n\n        handle_mask : callable\n            see :meth:`NDArithmeticMixin.add`\n\n        kwds :\n            Additional parameters given to ``handle_mask``.\n\n        Returns\n        -------\n        result_mask : any type\n            If only one mask was present this mask is returned.\n            If neither had a mask ``None`` is returned. Otherwise\n            ``handle_mask`` must create (and copy) the returned mask.\n        """"""\n        # If handle_mask is None, return None\n        if handle_mask is None:\n            return None\n        \n        # Handle cases where one operand has no mask\n        if self.mask is None and operand is not None and operand.mask is not None:\n            # Make a copy so there is no reference in the result.\n            return deepcopy(operand.mask)\n        elif self.mask is not None and (operand is None or operand.mask is None):\n            # Make a copy so there is no reference in the result.\n            return deepcopy(self.mask)\n        elif self.mask is None and (operand is None or operand.mask is None):\n            return None\n        else:\n            # Both operands have masks, apply the handle_mask function\n            return handle_mask(self.mask, operand.mask, **kwds)\n\n    def _arithmetic_wcs', /testbed/astropy/nddata/mixins/ndarithmetic.py"
+27,28,1,1032442578894141,1032443241070495,1,1.0,python minimal_test.py
+28,29,1,1032443241080323,1032443430230461,0,0.0,"grep -A 5 ""def _arithmetic_wcs"" /testbed/astropy/nddata/mixins/ndarithmetic.py.bak"
+29,30,1,1032443430248545,1032443620582716,0,0.0,"cp /testbed/astropy/nddata/mixins/ndarithmetic.py.bak /testbed/astropy/nddata/mixins/ndarithmetic.py && sed -i '/def _arithmetic_mask/,/^    def _arithmetic_wcs/ c\
+    def _arithmetic_mask(self, operation, operand, handle_mask, axis=None, **kwds):\n        """"""\n        Calculate the resulting mask.\n\n        This is implemented as the piecewise ``or`` operation if both have a\n        mask.\n\n        Parameters\n        ----------\n        operation : callable\n            see :meth:`NDArithmeticMixin._arithmetic` parameter description.\n            By default, the ``operation`` will be ignored.\n\n        operand : `NDData`-like instance\n            The second operand wrapped in an instance of the same class as\n            self.\n\n        handle_mask : callable\n            see :meth:`NDArithmeticMixin.add`\n\n        kwds :\n            Additional parameters given to ``handle_mask``.\n\n        Returns\n        -------\n        result_mask : any type\n            If only one mask was present this mask is returned.\n            If neither had a mask ``None`` is returned. Otherwise\n            ``handle_mask`` must create (and copy) the returned mask.\n        """"""\n        # If handle_mask is None, return None\n        if handle_mask is None:\n            return None\n        \n        # Handle cases where one operand has no mask\n        if self.mask is None and operand is not None and operand.mask is not None:\n            # Make a copy so there is no reference in the result.\n            return deepcopy(operand.mask)\n        elif self.mask is not None and (operand is None or operand.mask is None):\n            # Make a copy so there is no reference in the result.\n            return deepcopy(self.mask)\n        elif self.mask is None and (operand is None or operand.mask is None):\n            return None\n        else:\n            # Both operands have masks, apply the handle_mask function\n            return handle_mask(self.mask, operand.mask, **kwds)\n\n    def _arithmetic_wcs' /testbed/astropy/nddata/mixins/ndarithmetic.py"
+30,31,1,1032443620592524,1032443802020639,0,0.0,"grep -A 5 ""def _arithmetic_wcs"" /testbed/astropy/nddata/mixins/ndarithmetic.py"
+31,32,1,1032443802030818,1032443985917157,0,0.0,"sed -i '/def _arithmetic_wcs/c\\n    def _arithmetic_wcs(self, operation, operand, compare_wcs, **kwds):' /testbed/astropy/nddata/mixins/ndarithmetic.py"
+32,33,1,1032443985934800,1032444654685733,0,0.0,python minimal_test.py
+33,34,1,1032444654696203,1032444853670228,0,0.0,git diff -- /testbed/astropy/nddata/mixins/ndarithmetic.py > patch.txt
+34,35,1,1032444853682131,1032445039457816,0,0.0,cat patch.txt
+35,36,1,1032445039467725,1032445227067796,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

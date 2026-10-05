@@ -1,0 +1,297 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1032251447557157,1032251753445835,0,0.0,"find . -type f -name ""*.py"" | grep -i quantity"
+1,2,1,1032251753457787,1032251939588720,0,0.0,"grep -n ""__array_ufunc__"" ./astropy/units/quantity.py"
+2,3,1,1032251939596565,1032252124158700,0,0.0,"sed -n '620,680p' ./astropy/units/quantity.py"
+3,4,1,1032252124163119,1032252308743309,0,0.0,"sed -n '620,720p' ./astropy/units/quantity.py"
+4,5,1,1032252308750142,1032252494293265,1,1.0,"grep -n ""def converters_and_unit"" ./astropy/units/quantity.py"
+5,6,1,1032252494296851,1032254443979886,0,0.0,"find . -type f -name ""*.py"" -exec grep -l ""def converters_and_unit"" {} \;"
+6,7,1,1032254445027917,1032254628408256,0,0.0,cat ./astropy/units/quantity_helper/converters.py
+7,8,1,1032254628437470,1032254817421112,0,0.0,"cat > reproduce_issue.py << 'EOL'
+import dataclasses
+import numpy as np
+import astropy.units as u
+
+
+def _condition_arg(value):
+    """"""
+    Validate value is acceptable for conversion purposes.
+
+    Will convert into an array if not a scalar, and can be converted
+    into an array
+
+    Parameters
+    ----------
+    value : int or float value, or sequence of such values
+
+    Returns
+    -------
+    Scalar value or numpy array
+
+    Raises
+    ------
+    ValueError
+        If value is not as expected
+    """"""
+    if isinstance(value, (np.ndarray, float, int, complex, np.void)):
+        return value
+
+    avalue = np.array(value)
+    if avalue.dtype.kind not in ['i', 'f', 'c']:
+        raise ValueError(""Value not scalar compatible or convertible to ""
+                         ""an int, float, or complex array"")
+    return avalue
+
+
+class DuckArray(np.lib.mixins.NDArrayOperatorsMixin):
+    def __init__(self, ndarray):
+        self.ndarray = ndarray
+
+    @property
+    def unit(self):
+        return self.ndarray.unit
+
+    def __array_ufunc__(self, function, method, *inputs, **kwargs):
+        inputs = [inp.ndarray if isinstance(inp, DuckArray) else inp for inp in inputs]
+
+        for inp in inputs:
+            if isinstance(inp, np.ndarray):
+                result = inp.__array_ufunc__(function, method, *inputs, **kwargs)
+                if result is not NotImplemented:
+                    return DuckArray(result)
+
+        return NotImplemented
+
+# Test the issue
+duck = DuckArray(1 * u.mm)
+print(""Test 1: DuckArray on left - should work"")
+result1 = duck + (1 * u.m)
+print(f""Result: {result1}"")
+
+print(""\nTest 2: Compatible units on left - should work"")
+result2 = (1 * u.mm) + duck
+print(f""Result: {result2}"")
+
+print(""\nTest 3: Incompatible units on left - currently raises ValueError"")
+try:
+    result3 = (1 * u.m) + duck
+    print(f""Result: {result3}"")
+except Exception as e:
+    print(f""Error: {type(e).__name__}: {e}"")
+EOL"
+8,9,1,1032254817427364,1032255499680039,0,0.0,python reproduce_issue.py
+9,10,1,1032255499698593,1032255692950966,0,0.0,"cp ./astropy/units/quantity.py ./astropy/units/quantity.py.bak && sed -i '/for input_, converter in zip(inputs, converters):/a \\    try:' ./astropy/units/quantity.py && sed -i '/arrays.append(converter(input_) if converter else input_)/a \\    except (ValueError, UnitConversionError, TypeError):\n        return NotImplemented\n    finally:\n        pass' ./astropy/units/quantity.py"
+10,11,1,1032255692962227,1032255877528049,0,0.0,"grep -A 10 ""for input_, converter in zip(inputs, converters):"" ./astropy/units/quantity.py"
+11,12,1,1032255877558005,1032256065387616,0,0.0,"cp ./astropy/units/quantity.py ./astropy/units/quantity.py.bak2 && sed -i '/for input_, converter in zip(inputs, converters):/c\\        for input_, converter in zip(inputs, converters):\n            try:' ./astropy/units/quantity.py && sed -i '/input_ = getattr(input_, ""value"", input_)/c\\                input_ = getattr(input_, ""value"", input_)\n                arrays.append(converter(input_) if converter else input_)\n            except (ValueError, UnitConversionError, TypeError):\n                return NotImplemented' ./astropy/units/quantity.py"
+12,13,1,1032256065391213,1032256248968285,0,0.0,"grep -A 15 ""for input_, converter in zip(inputs, converters):"" ./astropy/units/quantity.py"
+13,14,1,1032256248973014,1032256436447862,0,0.0,"cp ./astropy/units/quantity.py ./astropy/units/quantity.py.bak3 && sed -i '/for input_, converter in zip(inputs, converters):/c\\        for input_, converter in zip(inputs, converters):\n            try:\n                input_ = getattr(input_, ""value"", input_)\n                arrays.append(converter(input_) if converter else input_)\n            except (ValueError, UnitConversionError, TypeError):\n                return NotImplemented' ./astropy/units/quantity.py"
+14,15,1,1032256436450957,1032256614290439,0,0.0,"grep -A 10 ""for input_, converter in zip(inputs, converters):"" ./astropy/units/quantity.py"
+15,16,1,1032256614301880,1032256792737357,0,0.0,"cat > temp_quantity.py << 'EOL'
+# Copy the original file and modify just the __array_ufunc__ method
+import fileinput
+import re
+
+with open('./astropy/units/quantity.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the __array_ufunc__ method
+in_method = False
+method_start = -1
+method_end = -1
+brace_count = 0
+
+for i, line in enumerate(lines):
+    if 'def __array_ufunc__' in line:
+        in_method = True
+        method_start = i
+        brace_count = 1
+    elif in_method:
+        # Count indentation levels to find the end of the method
+        if line.strip() and not line.startswith(' ' * (len(line) - len(line.lstrip()))):
+            brace_count -= 1
+            if brace_count == 0:
+                method_end = i
+                break
+        elif line.strip():
+            # This is a non-empty line, check if it's at the same or higher indentation
+            current_indent = len(line) - len(line.lstrip())
+            if current_indent <= len(lines[method_start]) - len(lines[method_start].lstrip()):
+                if current_indent == len(lines[method_start]) - len(lines[method_start].lstrip()):
+                    # Same indentation, likely a continuation
+                    pass
+                else:
+                    # Higher indentation (less spaces), end of method
+                    method_end = i
+                    break
+
+# Extract the method
+method_lines = lines[method_start:method_end] if method_end != -1 else lines[method_start:method_start+20]
+
+# Create the new method with our modification
+new_method = []
+for line in method_lines:
+    new_method.append(line)
+    if 'for input_, converter in zip(inputs, converters):' in line:
+        # Add the try-except block
+        indent = ' ' * (len(line) - len(line.lstrip()) + 4)
+        new_method.append(f""{indent}try:\n"")
+        new_method.append(f""{indent}    input_ = getattr(input_, \""value\"", input_)\n"")
+        new_method.append(f""{indent}    arrays.append(converter(input_) if converter else input_)\n"")
+        new_method.append(f""{indent}except (ValueError, UnitConversionError, TypeError):\n"")
+        new_method.append(f""{indent}    return NotImplemented\n"")
+        # Skip the next lines since we've already added them
+        break
+
+# Replace the old method with the new one
+with open('./astropy/units/quantity.py', 'w') as f:
+    # Write lines before the method
+    f.writelines(lines[:method_start])
+    # Write the new method
+    f.writelines(new_method)
+    # Write lines after the method
+    f.writelines(lines[method_end:] if method_end != -1 else lines[method_start+20:])
+EOL"
+16,17,1,1032256792740403,1032257000065948,0,0.0,python temp_quantity.py
+17,18,1,1032257000072791,1032257184258061,0,0.0,"grep -A 15 ""for input_, converter in zip(inputs, converters):"" ./astropy/units/quantity.py"
+18,19,1,1032257184267008,1032257369473609,0,0.0,"cat > test_fix.py << 'EOL'
+import dataclasses
+import numpy as np
+import astropy.units as u
+
+
+class DuckArray(np.lib.mixins.NDArrayOperatorsMixin):
+    def __init__(self, ndarray):
+        self.ndarray = ndarray
+
+    @property
+    def unit(self):
+        return self.ndarray.unit
+
+    def __array_ufunc__(self, function, method, *inputs, **kwargs):
+        inputs = [inp.ndarray if isinstance(inp, DuckArray) else inp for inp in inputs]
+
+        for inp in inputs:
+            if isinstance(inp, np.ndarray):
+                result = inp.__array_ufunc__(function, method, *inputs, **kwargs)
+                if result is not NotImplemented:
+                    return DuckArray(result)
+
+        return NotImplemented
+
+# Test the fix
+duck = DuckArray(1 * u.mm)
+print(""Test 1: DuckArray on left - should work"")
+result1 = duck + (1 * u.m)
+print(f""Result: {result1}"")
+
+print(""\nTest 2: Compatible units on left - should work"")
+result2 = (1 * u.mm) + duck
+print(f""Result: {result2}"")
+
+print(""\nTest 3: Incompatible units on left - should now work via __radd__"")
+try:
+    result3 = (1 * u.m) + duck
+    print(f""Result: {result3}"")
+except Exception as e:
+    print(f""Error: {type(e).__name__}: {e}"")
+EOL"
+19,20,1,1032257369492124,1032257766907231,1,1.0,python test_fix.py
+20,21,1,1032257766920716,1032257945890088,0,0.0,"cat > test_fix.py << 'EOL'
+import dataclasses
+import numpy as np
+import sys
+
+# Add the testbed directory to the path so we can import astropy
+sys.path.insert(0, '/testbed')
+
+# Import astropy after modifying the path
+import astropy.units as u
+
+
+class DuckArray(np.lib.mixins.NDArrayOperatorsMixin):
+    def __init__(self, ndarray):
+        self.ndarray = ndarray
+
+    @property
+    def unit(self):
+        return self.ndarray.unit
+
+    def __array_ufunc__(self, function, method, *inputs, **kwargs):
+        inputs = [inp.ndarray if isinstance(inp, DuckArray) else inp for inp in inputs]
+
+        for inp in inputs:
+            if isinstance(inp, np.ndarray):
+                result = inp.__array_ufunc__(function, method, *inputs, **kwargs)
+                if result is not NotImplemented:
+                    return DuckArray(result)
+
+        return NotImplemented
+
+# Test the fix
+duck = DuckArray(1 * u.mm)
+print(""Test 1: DuckArray on left - should work"")
+result1 = duck + (1 * u.m)
+print(f""Result: {result1}"")
+
+print(""\nTest 2: Compatible units on left - should work"")
+result2 = (1 * u.mm) + duck
+print(f""Result: {result2}"")
+
+print(""\nTest 3: Incompatible units on left - should now work via __radd__"")
+try:
+    result3 = (1 * u.m) + duck
+    print(f""Result: {result3}"")
+except Exception as e:
+    print(f""Error: {type(e).__name__}: {e}"")
+EOL"
+21,22,1,1032257945896270,1032258337566629,1,1.0,python test_fix.py
+22,23,1,1032258337577469,1032258517305916,0,0.0,"cat > create_patch.py << 'EOL'
+# Create a patch file with our changes
+git diff -- astropy/units/quantity.py > patch.txt
+EOL"
+23,24,1,1032258517310344,1032258723246469,1,1.0,python create_patch.py
+24,25,1,1032258723253141,1032258917724906,0,0.0,git diff -- astropy/units/quantity.py > patch.txt
+25,26,1,1032258917739303,1032259103112116,0,0.0,cat patch.txt
+26,27,1,1032259103118027,1032259292703826,0,0.0,"git diff -- astropy/units/quantity.py | grep -A 10 ""for input_, converter in zip(inputs, converters):"" > focused_patch.txt && cat focused_patch.txt"
+27,28,1,1032259292718984,1032259486655377,0,0.0,git add astropy/units/quantity.py && git diff --cached > patch.txt
+28,29,1,1032259486658924,1032259669129023,0,0.0,cat patch.txt
+29,30,1,1032259669132019,1032259849807028,1,1.0,"git diff -- astropy/units/quantity.py | grep -A 5 -B 5 ""for input_, converter in zip(inputs, converters):"" > minimal_patch.txt && cat minimal_patch.txt"
+30,31,1,1032259849812228,1032260127493249,0,0.0,cp ./astropy/units/quantity.py.bak ./astropy/units/quantity.py && git add astropy/units/quantity.py && git diff --cached > empty_patch.txt && cat empty_patch.txt
+31,32,1,1032260127499982,1032260334841457,1,1.0,"python -c ""import fileinput, re; found = False; with open('./astropy/units/quantity.py', 'r') as f: lines = f.readlines(); for i, line in enumerate(lines): if 'for input_, converter in zip(inputs, converters):' in line: indent = ' ' * (len(line) - len(line.lstrip())); lines = lines[:i+1] + [f'{indent}try:\n', f'{indent}    input_ = getattr(input_, \""value\"", input_)\n', f'{indent}    arrays.append(converter(input_) if converter else input_)\n', f'{indent}except (ValueError, UnitConversionError, TypeError):\n', f'{indent}    return NotImplemented\n'] + lines[i+1:]; break; with open('./astropy/units/quantity.py', 'w') as f: f.writelines(lines)"" && git add astropy/units/quantity.py && git diff --cached > patch.txt"
+32,33,1,1032260334845825,1032260513780947,0,0.0,cp ./astropy/units/quantity.py ./astropy/units/quantity.py.backup
+33,34,1,1032260513787089,1032260695979198,0,0.0,"cat > modify_quantity.py << 'EOL'
+import re
+
+def modify_quantity_file():
+    # Read the file
+    with open('./astropy/units/quantity.py', 'r') as f:
+        content = f.read()
+    
+    # Find the target line
+    target_line = '        for input_, converter in zip(inputs, converters):'
+    
+    # Create the replacement
+    replacement = '''        for input_, converter in zip(inputs, converters):
+            try:
+                input_ = getattr(input_, ""value"", input_)
+                arrays.append(converter(input_) if converter else input_)
+            except (ValueError, UnitConversionError, TypeError):
+                return NotImplemented'''
+    
+    # Replace the content
+    if target_line in content:
+        content = content.replace(target_line + '\n            input_ = getattr(input_, ""value"", input_)\n            arrays.append(converter(input_) if converter else input_)', replacement)
+        
+        # Write the file back
+        with open('./astropy/units/quantity.py', 'w') as f:
+            f.write(content)
+        print(""Successfully modified quantity.py"")
+    else:
+        print(""Could not find target line in quantity.py"")
+
+if __name__ == '__main__':
+    modify_quantity_file()
+EOL"
+34,35,1,1032260695982364,1032260905069947,0,0.0,python modify_quantity.py
+35,36,1,1032260905075989,1032261099905674,0,0.0,git add astropy/units/quantity.py && git diff --cached > patch.txt
+36,37,1,1032261099920832,1032261282293911,0,0.0,cat patch.txt
+37,38,1,1032261282298089,1032261461971011,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt
