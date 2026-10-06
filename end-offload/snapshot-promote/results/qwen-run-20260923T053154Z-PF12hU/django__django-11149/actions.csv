@@ -1,0 +1,540 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1185117827070685,1185118548292607,0,0.0,"find . -type f -name ""*.py"" | grep -i ""admin\|many"""
+1,2,1,1185118548328574,1185118730102305,0,0.0,"cat ./django/contrib/admin/options.py | grep -A 20 ""class TabularInline"""
+2,3,1,1185118730113396,1185118912438305,0,0.0,"grep -n ""class InlineModelAdmin"" ./django/contrib/admin/options.py -A 50"
+3,4,1,1185118912448083,1185119095249633,0,0.0,"grep -n ""get_formset"" ./django/contrib/admin/options.py"
+4,5,1,1185119095253831,1185119280444593,0,0.0,"grep -n ""def get_formset"" -A 40 ./django/contrib/admin/options.py"
+5,6,1,1185119280447729,1185119465405767,0,0.0,"grep -n ""has_change_permission\|has_add_permission"" ./django/contrib/admin/options.py"
+6,7,1,1185119465409033,1185119643779039,0,0.0,"grep -n ""def has_add_permission"" -A 10 ./django/contrib/admin/options.py"
+7,8,1,1185119643788045,1185119830330829,0,0.0,"grep -n ""def has_change_permission"" -A 15 ./django/contrib/admin/options.py | grep -A 15 ""2123"""
+8,9,1,1185119830335778,1185120014243626,0,0.0,"grep -n ""has_view_permission"" -A 10 ./django/contrib/admin/options.py"
+9,10,1,1185120014247112,1185120198296440,0,0.0,"grep -n ""def get_formset"" -A 50 ./django/contrib/admin/options.py | grep -A 30 ""can_delete ="""
+10,11,1,1185120198367558,1185120382597042,0,0.0,"cat > reproduce_issue.py << 'EOL'
+from django.contrib.auth.models import User, Permission
+from django.contrib.contenttypes.models import ContentType
+from django.db import models
+from django.contrib import admin
+
+# Create models as described in the PR
+class Photo(models.Model):
+    pass
+
+class Report(models.Model):
+    photos = models.ManyToManyField(Photo)
+
+class ReportPhotoInlineModelAdmin(admin.TabularInline):
+    model = Report.photos.through
+    show_change_link = True
+
+class ReportAdmin(admin.ModelAdmin):
+    inlines = [ReportPhotoInlineModelAdmin]
+
+# Register the admin
+admin.site.register(Report, ReportAdmin)
+
+# Create a user with only view permissions
+user = User.objects.create_user('testuser', 'test@example.com', 'password')
+
+# Get content type for Report model
+report_ct = ContentType.objects.get_for_model(Report)
+
+# Add view permission for Report
+view_permission = Permission.objects.get(codename='view_report', content_type=report_ct)
+user.user_permissions.add(view_permission)
+
+# Get content type for Photo model
+photo_ct = ContentType.objects.get_for_model(Photo)
+
+# Add view permission for Photo
+view_permission = Permission.objects.get(codename='view_photo', content_type=photo_ct)
+user.user_permissions.add(view_permission)
+
+# Print the user's permissions
+count = user.user_permissions.count()
+print(f""User has {count} permissions:"")
+for perm in user.user_permissions.all():
+    print(f""- {perm.codename} ({perm.content_type.model})"")
+
+# Check what permissions the user has on the inline model
+inline_model = Report.photos.through
+inline_ct = ContentType.objects.get_for_model(inline_model)
+print(f""\nInline model: {inline_model._meta.label}"")
+print(f""Auto-created: {inline_model._meta.auto_created}"")
+
+# Check permissions through the admin interface
+report_admin = ReportAdmin(Report, admin.site)
+inline_admin = report_admin.inlines[0](Report, admin.site)
+
+print(f""\nUser has add permission on inline: {inline_admin.has_add_permission(None, None)}"")
+print(f""User has change permission on inline: {inline_admin.has_change_permission(None, None)}"")
+print(f""User has delete permission on inline: {inline_admin.has_delete_permission(None, None)}"")
+print(f""User has view permission on inline: {inline_admin.has_view_permission(None, None)}"")
+EOL"
+11,12,1,1185120382607231,1185120567835454,0,0.0,"cat > settings.py << 'EOL'
+SECRET_KEY = 'dummy'
+DEBUG = True
+INSTALLED_APPS = [
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.admin',
+    'django.contrib.messages',
+    'django.contrib.sessions',
+]
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:',
+    }
+}
+
+MIDDLEWARE = [
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+]
+
+ROOT_URLCONF = 'django.contrib.admin.urls'
+
+USE_TZ = True
+EOL"
+12,13,1,1185120567838861,1185121458902389,1,1.0,"python -c ""import django; import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings'); django.setup(); exec(open('reproduce_issue.py').read())"""
+13,14,1,1185121458913971,1185121644535209,0,0.0,"mkdir -p myapp/models && cat > myapp/models.py << 'EOL'
+from django.db import models
+
+class Photo(models.Model):
+    pass
+
+class Report(models.Model):
+    photos = models.ManyToManyField(Photo)
+EOL"
+14,15,1,1185121644538626,1185121828835036,0,0.0,"cat > myapp/apps.py << 'EOL'
+from django.apps import AppConfig
+
+class MyAppConfig(AppConfig):
+    name = 'myapp'
+EOL"
+15,16,1,1185121828838171,1185122009695846,0,0.0,"sed -i ""/INSTALLED_APPS = \[/a     'myapp',"" settings.py"
+16,17,1,1185122009711285,1185122189831219,0,0.0,"cat > reproduce_issue.py << 'EOL'
+from django.contrib.auth.models import User, Permission
+from django.contrib.contenttypes.models import ContentType
+from django.contrib import admin
+from myapp.models import Photo, Report
+
+# Create admin classes
+class ReportPhotoInlineModelAdmin(admin.TabularInline):
+    model = Report.photos.through
+    show_change_link = True
+
+class ReportAdmin(admin.ModelAdmin):
+    inlines = [ReportPhotoInlineModelAdmin]
+
+# Register the admin
+admin.site.register(Report, ReportAdmin)
+
+# Create a user with only view permissions
+user = User.objects.create_user('testuser', 'test@example.com', 'password')
+
+# Get content type for Report model
+report_ct = ContentType.objects.get_for_model(Report)
+
+# Add view permission for Report
+try:
+    view_permission = Permission.objects.get(codename='view_report', content_type=report_ct)
+    user.user_permissions.add(view_permission)
+except Permission.DoesNotExist:
+    print(""View permission for Report does not exist"")
+
+# Get content type for Photo model
+photo_ct = ContentType.objects.get_for_model(Photo)
+
+# Add view permission for Photo
+try:
+    view_permission = Permission.objects.get(codename='view_photo', content_type=photo_ct)
+    user.user_permissions.add(view_permission)
+except Permission.DoesNotExist:
+    print(""View permission for Photo does not exist"")
+
+# Print the user's permissions
+count = user.user_permissions.count()
+print(f""User has {count} permissions:"")
+for perm in user.user_permissions.all():
+    print(f""- {perm.codename} ({perm.content_type.model})"")
+
+# Check what permissions the user has on the inline model
+inline_model = Report.photos.through
+inline_ct = ContentType.objects.get_for_model(inline_model)
+print(f""\nInline model: {inline_model._meta.label}"")
+print(f""Auto-created: {inline_model._meta.auto_created}"")
+
+# Check permissions through the admin interface
+report_admin = ReportAdmin(Report, admin.site)
+inline_admin = report_admin.inlines[0](Report, admin.site)
+
+print(f""\nUser has add permission on inline: {inline_admin.has_add_permission(None, None)}"")
+print(f""User has change permission on inline: {inline_admin.has_change_permission(None, None)}"")
+print(f""User has delete permission on inline: {inline_admin.has_delete_permission(None, None)}"")
+print(f""User has view permission on inline: {inline_admin.has_view_permission(None, None)}"")
+EOL"
+17,18,1,1185122189834284,1185122732797628,1,1.0,"python -c ""import django; import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings'); django.setup(); exec(open('reproduce_issue.py').read())"""
+18,19,1,1185122732800994,1185123374817444,0,0.0,"python -c ""import django; import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings'); django.setup(); from django.core.management import call_command; call_command('migrate', '--run-syncdb')"""
+19,20,1,1185123374829877,1185123911320363,1,1.0,"python -c ""import django; import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings'); django.setup(); exec(open('reproduce_issue.py').read())"""
+20,21,1,1185123911407586,1185124455691701,1,1.0,"python -c ""import django; import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings'); django.setup(); from django.test.utils import setup_test_environment; setup_test_environment(); from django.test.utils import get_runner; TestRunner = get_runner(django.conf.settings); test_runner = TestRunner(); test_runner.setup_test_environment(); test_runner.setup_databases(verbosity=1, interactive=False)"""
+21,22,1,1185124455697552,1185124643329033,0,0.0,"cat > create_tables.py << 'EOL'
+import django
+import os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
+django.setup()
+
+from django.core.management import call_command
+from django.db import connection
+
+call_command('migrate', '--run-syncdb')
+
+# Verify tables exist
+cursor = connection.cursor()
+cursor.execute(""SELECT name FROM sqlite_master WHERE type='table';"")
+tables = cursor.fetchall()
+print(""Tables in database:"")
+for table in tables:
+    print(f""- {table[0]}"")
+EOL"
+22,23,1,1185124643342148,1185125266303092,0,0.0,python create_tables.py
+23,24,1,1185125266317049,1185125803462345,1,1.0,"python -c ""import django; import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings'); django.setup(); exec(open('reproduce_issue.py').read())"""
+24,25,1,1185125803543832,1185125989536506,0,0.0,"mkdir -p myapp/management/commands && cat > myapp/management/commands/reproduce_issue.py << 'EOL'
+from django.core.management.base import BaseCommand
+from django.contrib.auth.models import User, Permission
+from django.contrib.contenttypes.models import ContentType
+from myapp.models import Photo, Report
+from django.contrib import admin
+
+class ReportPhotoInlineModelAdmin(admin.TabularInline):
+    model = Report.photos.through
+    show_change_link = True
+
+class ReportAdmin(admin.ModelAdmin):
+    inlines = [ReportPhotoInlineModelAdmin]
+
+# Register the admin if not already registered
+if not admin.site.is_registered(Report):
+    admin.site.register(Report, ReportAdmin)
+
+class Command(BaseCommand):
+    help = 'Reproduce the ManyToMany inline permission issue'
+
+    def handle(self, *args, **options):
+        # Create a user with only view permissions
+        user = User.objects.create_user('testuser', 'test@example.com', 'password')
+        
+        # Get content type for Report model
+        report_ct = ContentType.objects.get_for_model(Report)
+        
+        # Add view permission for Report
+        try:
+            view_permission = Permission.objects.get(codename='view_report', content_type=report_ct)
+            user.user_permissions.add(view_permission)
+            self.stdout.write(f""Added view_report permission to user"")
+        except Permission.DoesNotExist:
+            self.stdout.write(f""View permission for Report does not exist"")
+        
+        # Get content type for Photo model
+        photo_ct = ContentType.objects.get_for_model(Photo)
+        
+        # Add view permission for Photo
+        try:
+            view_permission = Permission.objects.get(codename='view_photo', content_type=photo_ct)
+            user.user_permissions.add(view_permission)
+            self.stdout.write(f""Added view_photo permission to user"")
+        except Permission.DoesNotExist:
+            self.stdout.write(f""View permission for Photo does not exist"")
+        
+        # Print the user's permissions
+        count = user.user_permissions.count()
+        self.stdout.write(f""\nUser has {count} permissions:"")
+        for perm in user.user_permissions.all():
+            self.stdout.write(f""- {perm.codename} ({perm.content_type.model})"")
+        
+        # Check what permissions the user has on the inline model
+        inline_model = Report.photos.through
+        inline_ct = ContentType.objects.get_for_model(inline_model)
+        self.stdout.write(f""\nInline model: {inline_model._meta.label}"")
+        self.stdout.write(f""Auto-created: {inline_model._meta.auto_created}"")
+        
+        # Check permissions through the admin interface
+        report_admin = ReportAdmin(Report, admin.site)
+        inline_admin = report_admin.inlines[0](Report, admin.site)
+        
+        self.stdout.write(f""\nUser has add permission on inline: {inline_admin.has_add_permission(None, None)}"")
+        self.stdout.write(f""User has change permission on inline: {inline_admin.has_change_permission(None, None)}"")
+        self.stdout.write(f""User has delete permission on inline: {inline_admin.has_delete_permission(None, None)}"")
+        self.stdout.write(f""User has view permission on inline: {inline_admin.has_view_permission(None, None)}"")
+EOL"
+25,26,1,1185125989547016,1185126186369406,2,2.0,python manage.py reproduce_issue
+26,27,1,1185126186373854,1185126364665116,0,0.0,"cat > manage.py << 'EOL'
+#!/usr/bin/env python
+import os
+import sys
+
+if __name__ == '__main__':
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'settings')
+    try:
+        from django.core.management import execute_from_command_line
+    except ImportError as exc:
+        raise ImportError(
+            ""Couldn't import Django. Are you sure it's installed and ""
+            ""available on your PYTHONPATH environment variable? Did you ""
+            ""forget to activate a virtual environment?""
+        ) from exc
+    execute_from_command_line(sys.argv)
+EOL"
+27,28,1,1185126364669143,1185126850147240,1,1.0,python manage.py reproduce_issue
+28,29,1,1185126850151358,1185127032617973,0,0.0,"sed -i 's/ROOT_URLCONF = .*$/ROOT_URLCONF = \""myapp.urls\""/' settings.py"
+29,30,1,1185127032621189,1185127214284401,0,0.0,"mkdir -p myapp/urls && cat > myapp/urls.py << 'EOL'
+from django.urls import path
+from django.contrib import admin
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+]
+EOL"
+30,31,1,1185127214288178,1185127715213337,1,1.0,python manage.py reproduce_issue
+31,32,1,1185127715299824,1185127895082107,0,0.0,"cat >> settings.py << 'EOL'
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+EOL"
+32,33,1,1185127895087036,1185128460277348,1,1.0,python manage.py reproduce_issue
+33,34,1,1185128460294190,1185129098828020,0,0.0,python manage.py migrate
+34,35,1,1185129098832960,1185129651329790,1,1.0,python manage.py reproduce_issue
+35,36,1,1185129651337675,1185130136636044,0,0.0,"python manage.py shell -c ""from django.db import connection; cursor = connection.cursor(); cursor.execute('SELECT name FROM sqlite_master WHERE type=\'table\';'); print(cursor.fetchall())"""
+36,37,1,1185130136643127,1185130316659110,0,0.0,"sed -i ""s/'NAME': ':memory:'/'NAME': 'db.sqlite3'/"" settings.py"
+37,38,1,1185130316665222,1185131282348298,0,0.0,"python manage.py migrate && python manage.py shell -c ""from django.db import connection; cursor = connection.cursor(); cursor.execute('SELECT name FROM sqlite_master WHERE type=\'table\';'); print(cursor.fetchall())"""
+38,39,1,1185131282357766,1185131850169737,1,1.0,python manage.py reproduce_issue
+39,40,1,1185131850183723,1185132031662435,0,0.0,"cat > myapp/management/commands/reproduce_issue.py << 'EOL'
+from django.core.management.base import BaseCommand
+from django.contrib.auth.models import User, Permission
+from django.contrib.contenttypes.models import ContentType
+from myapp.models import Photo, Report
+from django.contrib import admin
+from django.http import HttpRequest
+
+class ReportPhotoInlineModelAdmin(admin.TabularInline):
+    model = Report.photos.through
+    show_change_link = True
+
+class ReportAdmin(admin.ModelAdmin):
+    inlines = [ReportPhotoInlineModelAdmin]
+
+# Register the admin if not already registered
+if not admin.site.is_registered(Report):
+    admin.site.register(Report, ReportAdmin)
+
+class Command(BaseCommand):
+    help = 'Reproduce the ManyToMany inline permission issue'
+
+    def handle(self, *args, **options):
+        # Create a user with only view permissions
+        user = User.objects.create_user('testuser', 'test@example.com', 'password')
+        
+        # Get content type for Report model
+        report_ct = ContentType.objects.get_for_model(Report)
+        
+        # Add view permission for Report
+        try:
+            view_permission = Permission.objects.get(codename='view_report', content_type=report_ct)
+            user.user_permissions.add(view_permission)
+            self.stdout.write(f""Added view_report permission to user"")
+        except Permission.DoesNotExist:
+            self.stdout.write(f""View permission for Report does not exist"")
+        
+        # Get content type for Photo model
+        photo_ct = ContentType.objects.get_for_model(Photo)
+        
+        # Add view permission for Photo
+        try:
+            view_permission = Permission.objects.get(codename='view_photo', content_type=photo_ct)
+            user.user_permissions.add(view_permission)
+            self.stdout.write(f""Added view_photo permission to user"")
+        except Permission.DoesNotExist:
+            self.stdout.write(f""View permission for Photo does not exist"")
+        
+        # Print the user's permissions
+        count = user.user_permissions.count()
+        self.stdout.write(f""\nUser has {count} permissions:"")
+        for perm in user.user_permissions.all():
+            self.stdout.write(f""- {perm.codename} ({perm.content_type.model})"")
+        
+        # Check what permissions the user has on the inline model
+        inline_model = Report.photos.through
+        inline_ct = ContentType.objects.get_for_model(inline_model)
+        self.stdout.write(f""\nInline model: {inline_model._meta.label}"")
+        self.stdout.write(f""Auto-created: {inline_model._meta.auto_created}"")
+        
+        # Create a mock request with the user
+        request = HttpRequest()
+        request.user = user
+        
+        # Check permissions through the admin interface
+        report_admin = ReportAdmin(Report, admin.site)
+        inline_admin = report_admin.inlines[0](Report, admin.site)
+        
+        self.stdout.write(f""\nUser has add permission on inline: {inline_admin.has_add_permission(request, None)}"")
+        self.stdout.write(f""User has change permission on inline: {inline_admin.has_change_permission(request, None)}"")
+        self.stdout.write(f""User has delete permission on inline: {inline_admin.has_delete_permission(request, None)}"")
+        self.stdout.write(f""User has view permission on inline: {inline_admin.has_view_permission(request, None)}"")
+EOL"
+40,41,1,1185132031681701,1185132585337342,1,1.0,python manage.py reproduce_issue
+41,42,1,1185132585352060,1185132770392822,0,0.0,"cat > myapp/management/commands/reproduce_issue.py << 'EOL'
+from django.core.management.base import BaseCommand
+from django.contrib.auth.models import User, Permission
+from django.contrib.contenttypes.models import ContentType
+from myapp.models import Photo, Report
+from django.contrib import admin
+from django.http import HttpRequest
+
+class ReportPhotoInlineModelAdmin(admin.TabularInline):
+    model = Report.photos.through
+    show_change_link = True
+
+class ReportAdmin(admin.ModelAdmin):
+    inlines = [ReportPhotoInlineModelAdmin]
+
+# Register the admin if not already registered
+if not admin.site.is_registered(Report):
+    admin.site.register(Report, ReportAdmin)
+
+class Command(BaseCommand):
+    help = 'Reproduce the ManyToMany inline permission issue'
+
+    def handle(self, *args, **options):
+        # Get or create a user with only view permissions
+        user, created = User.objects.get_or_create(username='testuser', defaults={'email': 'test@example.com'})
+        if created:
+            user.set_password('password')
+            user.save()
+        
+        # Clear existing permissions
+        user.user_permissions.clear()
+        
+        # Get content type for Report model
+        report_ct = ContentType.objects.get_for_model(Report)
+        
+        # Add view permission for Report
+        try:
+            view_permission = Permission.objects.get(codename='view_report', content_type=report_ct)
+            user.user_permissions.add(view_permission)
+            self.stdout.write(f""Added view_report permission to user"")
+        except Permission.DoesNotExist:
+            self.stdout.write(f""View permission for Report does not exist"")
+        
+        # Get content type for Photo model
+        photo_ct = ContentType.objects.get_for_model(Photo)
+        
+        # Add view permission for Photo
+        try:
+            view_permission = Permission.objects.get(codename='view_photo', content_type=photo_ct)
+            user.user_permissions.add(view_permission)
+            self.stdout.write(f""Added view_photo permission to user"")
+        except Permission.DoesNotExist:
+            self.stdout.write(f""View permission for Photo does not exist"")
+        
+        # Print the user's permissions
+        count = user.user_permissions.count()
+        self.stdout.write(f""\nUser has {count} permissions:"")
+        for perm in user.user_permissions.all():
+            self.stdout.write(f""- {perm.codename} ({perm.content_type.model})"")
+        
+        # Check what permissions the user has on the inline model
+        inline_model = Report.photos.through
+        inline_ct = ContentType.objects.get_for_model(inline_model)
+        self.stdout.write(f""\nInline model: {inline_model._meta.label}"")
+        self.stdout.write(f""Auto-created: {inline_model._meta.auto_created}"")
+        
+        # Create a mock request with the user
+        request = HttpRequest()
+        request.user = user
+        
+        # Check permissions through the admin interface
+        report_admin = ReportAdmin(Report, admin.site)
+        inline_admin = report_admin.inlines[0](Report, admin.site)
+        
+        self.stdout.write(f""\nUser has add permission on inline: {inline_admin.has_add_permission(request, None)}"")
+        self.stdout.write(f""User has change permission on inline: {inline_admin.has_change_permission(request, None)}"")
+        self.stdout.write(f""User has delete permission on inline: {inline_admin.has_delete_permission(request, None)}"")
+        self.stdout.write(f""User has view permission on inline: {inline_admin.has_view_permission(request, None)}"")
+EOL"
+42,43,1,1185132770395767,1185133286679913,0,0.0,python manage.py reproduce_issue
+43,45,1,1185133286687057,1185133475152993,0,0.0,"cp ./django/contrib/admin/options.py ./django/contrib/admin/options.py.bak && cat > ./django/contrib/admin/options.py.patch << 'EOL'
+--- a/django/contrib/admin/options.py
++++ b/django/contrib/admin/options.py
+@@ -2114,20 +2114,20 @@
+     def has_add_permission(self, request, obj):
+         if self.opts.auto_created:
+             # We're checking the rights to an auto-created intermediate model,
+             # which doesn't have its own individual permissions. The user needs
+-            # to have the view permission for the related model in order to
+-            # be able to do anything with the intermediate model.
+-            return self.has_view_permission(request, obj)
++            # to have the add permission for the parent model in order to
++            # be able to add relationships through the intermediate model.
++            return self.parent_model_admin.has_add_permission(request, obj)
+         return super().has_add_permission(request)
+ 
+     def has_change_permission(self, request, obj=None):
+         if self.opts.auto_created:
+             # We're checking the rights to an auto-created intermediate model,
+             # which doesn't have its own individual permissions. The user needs
+-            # to have the view permission for the related model in order to
+-            # be able to do anything with the intermediate model.
+-            return self.has_view_permission(request, obj)
++            # to have the change permission for the parent model in order to
++            # be able to change relationships through the intermediate model.
++            return self.parent_model_admin.has_change_permission(request, obj)
+         return super().has_change_permission(request)
+ 
+     def has_delete_permission(self, request, obj=None):
+         if self.opts.auto_created:
+             # We're checking the rights to an auto-created intermediate model,
+             # which doesn't have its own individual permissions. The user needs
+-            # to have the view permission for the related model in order to
+-            # be able to do anything with the intermediate model.
+-            return self.has_view_permission(request, obj)
++            # to have the delete permission for the parent model in order to
++            # be able to delete relationships through the intermediate model.
++            return self.parent_model_admin.has_delete_permission(request, obj)
+         return super().has_delete_permission(request, obj)
+EOL"
+44,46,1,1185133475164014,1185133668898677,0,0.0,"sed -i ""/def has_add_permission(self, request, obj):/,/return super().has_add_permission(request)/ {s/return self.has_view_permission(request, obj)/return self.parent_model_admin.has_add_permission(request, obj)/; s/view permission for the related/view permission for the parent/; s/to be able to do anything with/to be able to add relationships with/}"" ./django/contrib/admin/options.py && sed -i ""/def has_change_permission(self, request, obj=None):/,/return super().has_change_permission(request)/ {s/return self.has_view_permission(request, obj)/return self.parent_model_admin.has_change_permission(request, obj)/; s/view permission for the related/view permission for the parent/; s/to be able to do anything with/to be able to change relationships with/}"" ./django/contrib/admin/options.py && sed -i ""/def has_delete_permission(self, request, obj=None):/,/return super().has_delete_permission(request, obj)/ {s/return self.has_view_permission(request, obj)/return self.parent_model_admin.has_delete_permission(request, obj)/; s/view permission for the related/view permission for the parent/; s/to be able to do anything with/to be able to delete relationships with/}"" ./django/contrib/admin/options.py"
+45,47,1,1185133668905661,1185133855048367,0,0.0,"grep -n ""parent_model_admin"" ./django/contrib/admin/options.py"
+46,48,1,1185133855055320,1185134038140460,1,1.0,"grep -n ""def __init__"" -A 10 ./django/contrib/admin/options.py | grep -A 10 ""InlineModelAdmin"""
+47,49,1,1185134038149446,1185134223578096,1,1.0,"grep -n ""def __init__"" ./django/contrib/admin/options.py | grep ""InlineModelAdmin"" -B 5 -A 5"
+48,50,1,1185134223585800,1185134407143155,0,0.0,"grep -n ""class InlineModelAdmin"" -A 200 ./django/contrib/admin/options.py | grep -A 100 ""def __init__"""
+49,51,1,1185134407147774,1185134589681070,0,0.0,"grep -n ""parent_model_admin"" ./django/contrib/admin/options.py"
+50,52,1,1185134589688504,1185134771201560,1,1.0,"grep -n ""@property"" -A 5 ./django/contrib/admin/options.py | grep -A 10 ""parent_model_admin"""
+51,53,1,1185134771205999,1185134952104497,0,0.0,"grep -n ""class ModelAdmin"" -A 20 ./django/contrib/admin/options.py"
+52,54,1,1185134952114997,1185135136631690,1,1.0,"grep -n ""parent_model_admin"" ./django/contrib/admin/options.py | grep ""ModelAdmin"" -A 5 -B 5"
+53,55,1,1185135136641869,1185135320767280,0,0.0,"grep -n ""get_formsets_with_inlines"" -A 20 ./django/contrib/admin/options.py"
+54,56,1,1185135320772470,1185135498353381,0,0.0,"grep -n ""get_inline_instances"" -A 20 ./django/contrib/admin/options.py"
+55,57,1,1185135498360514,1185135768374628,0,0.0,"grep -r ""parent_model_admin"" ./django/contrib/admin/"
+56,58,1,1185135768378676,1185135971233012,1,1.0,"grep -r ""setattr"" ./django/contrib/admin/ | grep ""parent_model_admin"""
+57,59,1,1185135971237059,1185136171696989,1,1.0,"grep -r ""def parent_model_admin"" ./django/contrib/admin/"
+58,60,1,1185136171709833,1185136354878886,0,0.0,"grep -n "".*parent_model_admin.*"" -B 5 -A 5 ./django/contrib/admin/options.py"
+59,61,1,1185136354903222,1185136536923155,0,0.0,"grep -n ""get_inline_instances"" -A 30 ./django/contrib/admin/options.py"
+60,62,1,1185136536928915,1185136719699143,0,0.0,"grep -n ""def get_formsets_with_inlines"" -A 10 ./django/contrib/admin/options.py"
+61,63,1,1185136719703350,1185136901484486,0,0.0,"grep -n ""class BaseModelAdmin"" -A 10 ./django/contrib/admin/options.py"
+62,64,1,1185136901495837,1185137099314342,0,0.0,git diff -- ./django/contrib/admin/options.py > patch.txt
+63,65,1,1185137099326284,1185137277369693,0,0.0,cat patch.txt
+64,67,1,1185137277373139,1185137458569591,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

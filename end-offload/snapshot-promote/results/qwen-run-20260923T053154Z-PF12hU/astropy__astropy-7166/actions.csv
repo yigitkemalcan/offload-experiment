@@ -1,0 +1,1295 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1184814709483598,1184815030435003,0,0.0,"find . -type f -name ""*.py"" | grep -v ""__pycache__"" | grep -v ""\.pyc$"""
+1,2,1,1184815030444671,1184815749701113,0,0.0,"grep -r ""InheritDocstrings"" ."
+2,3,1,1184815749708577,1184815938022196,0,0.0,"cat ./astropy/utils/misc.py | grep -A 50 ""class InheritDocstrings"""
+3,4,1,1184815938026354,1184816118051737,0,0.0,"echo ""from astropy.utils.misc import InheritDocstrings
+
+class Base(metaclass=InheritDocstrings):
+    @property
+    def my_property(self):
+        '''This is a property in the base class'''
+        return 42
+
+class Derived(Base):
+    @property
+    def my_property(self):
+        return 43
+
+# Test if docstring is inherited
+docstring = Derived.my_property.__doc__
+print(f'Docstring: {docstring}')
+print(f'Docstring is None: {docstring is None}')"" > test_property_docstring.py"
+4,5,1,1184816118054452,1184816687419077,0,0.0,python test_property_docstring.py
+5,6,1,1184816687422574,1184816877919338,0,0.0,"cp ./astropy/utils/misc.py ./astropy/utils/misc.py.bak && sed -i ""/inspect.isfunction(val) and/ {s/inspect.isfunction(val) and/((inspect.isfunction(val) or isinstance(val, property)) and/; :a; N; /val.__doc__ is None)/!ba; s/val.__doc__ is None)/val.__doc__ is None or (isinstance(val, property) and val.fget.__doc__ is None)/}"" ./astropy/utils/misc.py"
+6,7,1,1184816877928826,1184817061603265,0,0.0,"cat > ./astropy/utils/misc.py << 'EOL'
+import inspect
+import abc
+
+class InheritDocstrings(type):
+    """"""
+    This metaclass makes methods of a class automatically have their
+    docstrings filled in from the methods they override in the base
+    class.
+
+    If the class uses multiple inheritance, the docstring will be
+    chosen from the first class in the bases list, in the same way as
+    methods are normally resolved in Python.  If this results in
+    selecting the wrong docstring, the docstring will need to be
+    explicitly included on the method.
+
+    For example::
+
+        >>> from astropy.utils.misc import InheritDocstrings
+        >>> class A(metaclass=InheritDocstrings):
+        ...     def wiggle(self):
+        ...         ""Wiggle the thingamajig""
+        ...         pass
+        >>> class B(A):
+        ...     def wiggle(self):
+        ...         pass
+        >>> B.wiggle.__doc__
+        u'Wiggle the thingamajig'
+    """"""
+
+    def __init__(cls, name, bases, dct):
+        def is_public_member(key):
+            return (
+                (key.startswith('__') and key.endswith('__')
+                 and len(key) > 4) or
+                not key.startswith('_'))
+
+        for key, val in dct.items():
+            if is_public_member(key):
+                # Handle regular functions
+                if inspect.isfunction(val) and val.__doc__ is None:
+                    for base in cls.__mro__[1:]:
+                        super_method = getattr(base, key, None)
+                        if super_method is not None:
+                            val.__doc__ = super_method.__doc__
+                            break
+                
+                # Handle properties
+                elif isinstance(val, property) and (val.fget.__doc__ is None):
+                    for base in cls.__mro__[1:]:
+                        super_prop = getattr(base, key, None)
+                        if isinstance(super_prop, property) and super_prop.fget is not None:
+                            # Create a new property with the inherited docstring
+                            fget = val.fget
+                            fset = val.fset
+                            fdel = val.fdel
+                            fget.__doc__ = super_prop.fget.__doc__
+                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)
+                            # Replace the class attribute with the new property
+                            setattr(cls, key, new_prop)
+                            break
+
+        super().__init__(name, bases, dct)
+
+
+class OrderedDescriptor(metaclass=abc.ABCMeta):
+    """"""
+    Base class for descriptors whose order in the class body should be
+    preserved.  Intended for use in concert with the
+    `OrderedDescriptorContainer` metaclass.
+    """"""
+    def __init_subclass__(cls):
+        if not hasattr(cls, '_class_column_attrs'):
+            cls._class_column_attrs = []
+        super().__init_subclass__()
+
+    def __init__(self, name=None, description=''):
+        self.name = name
+        self.description = description
+        self._class_column_attrs.append(self)
+
+    def __set_name__(self, owner, name):
+        if self.name is None:
+            self.name = name
+
+    def to_data(self, instance):
+        raise NotImplementedError
+
+    def from_data(self, instance, data):
+        raise NotImplementedError
+EOL"
+7,8,1,1184817061605881,1184817479909424,1,1.0,python test_property_docstring.py
+8,9,1,1184817479914063,1184817667681501,0,0.0,cat ./astropy/utils/misc.py.bak
+9,10,1,1184817667684136,1184817852791837,0,0.0,"cat ./astropy/utils/misc.py.bak | sed ""/class InheritDocstrings/,/super().__init__(name, bases, dct)/c\
+class InheritDocstrings(type):\
+    \""\""\""\
+    This metaclass makes methods of a class automatically have their\
+    docstrings filled in from the methods they override in the base\
+    class.\
+\
+    If the class uses multiple inheritance, the docstring will be\
+    chosen from the first class in the bases list, in the same way as\
+    methods are normally resolved in Python.  If this results in\
+    selecting the wrong docstring, the docstring will need to be\
+    explicitly included on the method.\
+\
+    For example::\
+\
+        >>> from astropy.utils.misc import InheritDocstrings\
+        >>> class A(metaclass=InheritDocstrings):\
+        ...     def wiggle(self):\
+        ...         \""Wiggle the thingamajig\""\
+        ...         pass\
+        >>> class B(A):\
+        ...     def wiggle(self):\
+        ...         pass\
+        >>> B.wiggle.__doc__\
+        u'Wiggle the thingamajig'\
+    \""\""\""\
+\
+    def __init__(cls, name, bases, dct):\
+        def is_public_member(key):\
+            return (\
+                (key.startswith('__') and key.endswith('__')\
+                 and len(key) > 4) or\
+                not key.startswith('_'))\
+\
+        for key, val in dct.items():\
+            if is_public_member(key):\
+                # Handle regular functions\
+                if inspect.isfunction(val) and val.__doc__ is None:\
+                    for base in cls.__mro__[1:]:\
+                        super_method = getattr(base, key, None)\
+                        if super_method is not None:\
+                            val.__doc__ = super_method.__doc__\
+                            break\n                \
+                # Handle properties\
+                elif isinstance(val, property) and (val.fget.__doc__ is None):\
+                    for base in cls.__mro__[1:]:\
+                        super_prop = getattr(base, key, None)\
+                        if isinstance(super_prop, property) and super_prop.fget is not None:\
+                            # Create a new property with the inherited docstring\
+                            fget = val.fget\
+                            fset = val.fset\
+                            fdel = val.fdel\
+                            fget.__doc__ = super_prop.fget.__doc__\
+                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)\
+                            # Replace the class attribute with the new property\
+                            setattr(cls, key, new_prop)\
+                            break\
+\
+        super().__init__(name, bases, dct)\n"" > ./astropy/utils/misc.py"
+10,11,1,1184817852795534,1184818185187506,1,1.0,python test_property_docstring.py
+11,12,1,1184818185198186,1184818401409410,1,1.0,"python -c ""
+import re
+import inspect
+
+# Read the original file
+with open('./astropy/utils/misc.py.bak', 'r') as f:
+    content = f.read()
+
+# Define the new InheritDocstrings class implementation
+new_inherit_docstrings = '''class InheritDocstrings(type):
+    \""\""\""
+    This metaclass makes methods of a class automatically have their
+    docstrings filled in from the methods they override in the base
+    class.
+
+    If the class uses multiple inheritance, the docstring will be
+    chosen from the first class in the bases list, in the same way as
+    methods are normally resolved in Python.  If this results in
+    selecting the wrong docstring, the docstring will need to be
+    explicitly included on the method.
+
+    For example::
+
+        >>> from astropy.utils.misc import InheritDocstrings
+        >>> class A(metaclass=InheritDocstrings):
+        ...     def wiggle(self):
+        ...         \""Wiggle the thingamajig\""
+        ...         pass
+        >>> class B(A):
+        ...     def wiggle(self):
+        ...         pass
+        >>> B.wiggle.__doc__
+        u'Wiggle the thingamajig'
+    \""\""\""
+
+    def __init__(cls, name, bases, dct):
+        def is_public_member(key):
+            return (
+                (key.startswith('__') and key.endswith('__')
+                 and len(key) > 4) or
+                not key.startswith('_'))
+
+        for key, val in dct.items():
+            if is_public_member(key):
+                # Handle regular functions
+                if inspect.isfunction(val) and val.__doc__ is None:
+                    for base in cls.__mro__[1:]:
+                        super_method = getattr(base, key, None)
+                        if super_method is not None:
+                            val.__doc__ = super_method.__doc__
+                            break
+                
+                # Handle properties
+                elif isinstance(val, property) and (val.fget.__doc__ is None):
+                    for base in cls.__mro__[1:]:
+                        super_prop = getattr(base, key, None)
+                        if isinstance(super_prop, property) and super_prop.fget is not None:
+                            # Create a new property with the inherited docstring
+                            fget = val.fget
+                            fset = val.fset
+                            fdel = val.fdel
+                            fget.__doc__ = super_prop.fget.__doc__
+                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)
+                            # Replace the class attribute with the new property
+                            setattr(cls, key, new_prop)
+                            break
+
+        super().__init__(name, bases, dct)
+'''
+
+# Replace the InheritDocstrings class in the content
+# Find the start of the class
+start_match = re.search(r'class InheritDocstrings\s*\(.*?\):', content, re.DOTALL)
+if start_match:
+    start_pos = start_match.start()
+    # Find the end of the class by looking for the next class or function at the same indentation level
+    # or the end of the file
+    class_text = content[start_pos:]
+    lines = class_text.split('\n')
+    
+    # Find the indentation level of the class definition
+    class_indent = len(lines[0]) - len(lines[0].lstrip())
+    
+    # Find where the class ends (next line with same or less indentation that doesn't belong to the class)
+    end_pos = len(content)
+    for i in range(1, len(lines)):
+        if i >= len(lines):
+            break
+        line = lines[i]
+        if not line.strip():  # Empty line
+            continue
+        # Check indentation
+        current_indent = len(line) - len(line.lstrip())
+        if current_indent <= class_indent and line.lstrip()[0] in ['c', 'd', '@']:  # class, def, or decorator
+            # Found the next class, function, or decorator at same or higher level
+            end_pos = start_pos + sum(len(lines[j]) + 1 for j in range(i)) - 1
+            break
+    
+    # Replace the class
+    new_content = content[:start_pos] + new_inherit_docstrings + content[end_pos:]
+    
+    # Write the new content
+    with open('./astropy/utils/misc.py', 'w') as f:
+        f.write(new_content)
+else:
+    print('Could not find InheritDocstrings class')
+"""
+12,13,1,1184818401445348,1184818592179295,0,0.0,"cp ./astropy/utils/misc.py.bak ./astropy/utils/misc.py && sed -i ""/def __init__(cls, name, bases, dct):/,/super().__init__(name, bases, dct)/c\\ndef __init__(cls, name, bases, dct):\\n        def is_public_member(key):\\n            return (\\n                (key.startswith('__') and key.endswith('__')\\n                 and len(key) > 4) or\\n                not key.startswith('_'))\\n\\n        for key, val in dct.items():\\n            if is_public_member(key):\\n                # Handle regular functions\\n                if inspect.isfunction(val) and val.__doc__ is None:\\n                    for base in cls.__mro__[1:]:\\n                        super_method = getattr(base, key, None)\\n                        if super_method is not None:\\n                            val.__doc__ = super_method.__doc__\\n                            break\\n                \\n                # Handle properties\\n                elif isinstance(val, property) and (val.fget.__doc__ is None):\\n                    for base in cls.__mro__[1:]:\\n                        super_prop = getattr(base, key, None)\\n                        if isinstance(super_prop, property) and super_prop.fget is not None:\\n                            # Create a new property with the inherited docstring\\n                            fget = val.fget\\n                            fset = val.fset\\n                            fdel = val.fdel\\n                            fget.__doc__ = super_prop.fget.__doc__\\n                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)\\n                            # Replace the class attribute with the new property\\n                            setattr(cls, key, new_prop)\\n                            break\\n\\n        super().__init__(name, bases, dct)"" ./astropy/utils/misc.py"
+13,14,1,1184818592191248,1184818930064490,1,1.0,python test_property_docstring.py
+14,15,1,1184818930076422,1184819122422036,0,0.0,"cp ./astropy/utils/misc.py.bak ./astropy/utils/misc.py && sed -i '/def __init__(cls, name, bases, dct):/,/super().__init__(name, bases, dct)/c\
+def __init__(cls, name, bases, dct):\
+        def is_public_member(key):\
+            return (\
+                (key.startswith(__) and key.endswith(__)\
+                 and len(key) > 4) or\
+                not key.startswith(_))\
+\
+        for key, val in dct.items():\
+            if is_public_member(key):\
+                # Handle regular functions\
+                if inspect.isfunction(val) and val.__doc__ is None:\
+                    for base in cls.__mro__[1:]:\
+                        super_method = getattr(base, key, None)\
+                        if super_method is not None:\
+                            val.__doc__ = super_method.__doc__\
+                            break\
+                \
+                # Handle properties\
+                elif isinstance(val, property) and (val.fget.__doc__ is None):\
+                    for base in cls.__mro__[1:]:\
+                        super_prop = getattr(base, key, None)\
+                        if isinstance(super_prop, property) and super_prop.fget is not None:\
+                            # Create a new property with the inherited docstring\
+                            fget = val.fget\
+                            fset = val.fset\
+                            fdel = val.fdel\
+                            fget.__doc__ = super_prop.fget.__doc__\
+                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)\
+                            # Replace the class attribute with the new property\
+                            setattr(cls, key, new_prop)\
+                            break\
+\
+        super().__init__(name, bases, dct)' ./astropy/utils/misc.py"
+15,16,1,1184819122432725,1184819307824659,2,2.0,"cp ./astropy/utils/misc.py.bak ./astropy/utils/misc.py && sed -i ""s/def is_public_member(key):/def is_public_member(key):\\\n            return (\\\n                (key.startswith('__') and key.endswith('__')\\\n                 and len(key) > 4) or\\\n                not key.startswith('_'))/g"" ./astropy/utils/misc.py && sed -i '/def __init__(cls, name, bases, dct):/,/super().__init__(name, bases, dct)/c\\ndef __init__(cls, name, bases, dct):\\n        def is_public_member(key):\\n            return (\\n                (key.startswith(\""__\"") and key.endswith(\""__\"")\\n                 and len(key) > 4) or\\n                not key.startswith(\""_\""))\\n\\n        for key, val in dct.items():\\n            if is_public_member(key):\\n                # Handle regular functions\\n                if inspect.isfunction(val) and val.__doc__ is None:\\n                    for base in cls.__mro__[1:]:\\n                        super_method = getattr(base, key, None)\\n                        if super_method is not None:\\n                            val.__doc__ = super_method.__doc__\\n                            break\\n                \\n                # Handle properties\\n                elif isinstance(val, property) and (val.fget.__doc__ is None):\\n                    for base in cls.__mro__[1:]:\\n                        super_prop = getattr(base, key, None)\\n                        if isinstance(super_prop, property) and super_prop.fget is not None:\\n                            # Create a new property with the inherited docstring\\n                            fget = val.fget\\n                            fset = val.fset\\n                            fdel = val.fdel\\n                            fget.__doc__ = super_prop.fget.__doc__\\n                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)\\n                            # Replace the class attribute with the new property\\n                            setattr(cls, key, new_prop)\\n                            break\\n\\n        super().__init__(name, bases, dct)"" ./astropy/utils/misc.py"
+16,17,1,1184819307832163,1184819522868600,1,1.0,"python -c ""
+import re
+import ast
+import inspect
+
+# Read the original file
+with open('./astropy/utils/misc.py.bak', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# Extract the original InheritDocstrings class
+# Find the class definition
+class_match = re.search(r'class InheritDocstrings\s*\(.*?\):.*?(?=\n[^ \t]|$)', content, re.DOTALL)
+if not class_match:
+    raise ValueError('Could not find InheritDocstrings class')
+
+# Get the original class source
+class_source = class_match.group(0)
+
+# Parse the class to find the __init__ method
+# We'll use regex to find and replace the __init__ method
+init_match = re.search(r'def __init__\s*\(cls, name, bases, dct\):.*?super\(\)\.__init__\(name, bases, dct\)', class_source, re.DOTALL)
+if not init_match:
+    raise ValueError('Could not find __init__ method')
+
+# Define the new __init__ method
+new_init = '''def __init__(cls, name, bases, dct):
+        def is_public_member(key):
+            return (
+                (key.startswith('__') and key.endswith('__')
+                 and len(key) > 4) or
+                not key.startswith('_'))
+
+        for key, val in dct.items():
+            if is_public_member(key):
+                # Handle regular functions
+                if inspect.isfunction(val) and val.__doc__ is None:
+                    for base in cls.__mro__[1:]:
+                        super_method = getattr(base, key, None)
+                        if super_method is not None:
+                            val.__doc__ = super_method.__doc__
+                            break
+                
+                # Handle properties
+                elif isinstance(val, property) and (val.fget.__doc__ is None):
+                    for base in cls.__mro__[1:]:
+                        super_prop = getattr(base, key, None)
+                        if isinstance(super_prop, property) and super_prop.fget is not None:
+                            # Create a new property with the inherited docstring
+                            fget = val.fget
+                            fset = val.fset
+                            fdel = val.fdel
+                            fget.__doc__ = super_prop.fget.__doc__
+                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)
+                            # Replace the class attribute with the new property
+                            setattr(cls, key, new_prop)
+                            break
+
+        super().__init__(name, bases, dct)'''
+
+# Replace the __init__ method
+new_class_source = class_source[:init_match.start()] + new_init + class_source[init_match.end():]
+
+# Replace the class in the content
+new_content = content[:class_match.start()] + new_class_source + content[class_match.end():]
+
+# Write the new content
+with open('./astropy/utils/misc.py', 'w', encoding='utf-8') as f:
+    f.write(new_content)
+"""
+17,18,1,1184819522876114,1184819703690402,0,0.0,"grep -A 50 ""class InheritDocstrings"" ./astropy/utils/misc.py.bak | head -50"
+18,19,1,1184819703697495,1184819911123393,1,1.0,"python -c ""
+import re
+
+# Read the original file
+with open('./astropy/utils/misc.py.bak', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# Find the InheritDocstrings class
+class_pattern = r'class InheritDocstrings\s*\(.*?\):.*?(?=^(?=\S)|$)'
+class_match = re.search(class_pattern, content, re.DOTALL | re.MULTILINE)
+if not class_match:
+    raise ValueError('Could not find InheritDocstrings class')
+
+class_source = class_match.group(0)
+
+# Find the __init__ method within the class
+# The method starts with '    def __init__' and ends with '    super().__init__'
+init_pattern = r'    def __init__\(cls, name, bases, dct\):.*?^(?=\S)'
+init_match = re.search(init_pattern, class_source, re.DOTALL | re.MULTILINE)
+if not init_match:
+    raise ValueError('Could not find __init__ method')
+
+# Define the new __init__ method
+new_init = '''    def __init__(cls, name, bases, dct):
+        def is_public_member(key):
+            return (
+                (key.startswith('__') and key.endswith('__')
+                 and len(key) > 4) or
+                not key.startswith('_'))
+
+        for key, val in dct.items():
+            if is_public_member(key):
+                # Handle regular functions
+                if inspect.isfunction(val) and val.__doc__ is None:
+                    for base in cls.__mro__[1:]:
+                        super_method = getattr(base, key, None)
+                        if super_method is not None:
+                            val.__doc__ = super_method.__doc__
+                            break
+                
+                # Handle properties
+                elif isinstance(val, property) and (val.fget.__doc__ is None):
+                    for base in cls.__mro__[1:]:
+                        super_prop = getattr(base, key, None)
+                        if isinstance(super_prop, property) and super_prop.fget is not None:
+                            # Create a new property with the inherited docstring
+                            fget = val.fget
+                            fset = val.fset
+                            fdel = val.fdel
+                            fget.__doc__ = super_prop.fget.__doc__
+                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)
+                            # Replace the class attribute with the new property
+                            setattr(cls, key, new_prop)
+                            break
+
+        super().__init__(name, bases, dct)'''
+
+# Replace the __init__ method
+new_class_source = class_source[:init_match.start()] + new_init + class_source[init_match.end():]
+
+# Replace the class in the content
+new_content = content[:class_match.start()] + new_class_source + content[class_match.end():]
+
+# Write the new content
+with open('./astropy/utils/misc.py', 'w', encoding='utf-8') as f:
+    f.write(new_content)
+"""
+19,20,1,1184819911129805,1184820097276821,0,0.0,"cp ./astropy/utils/misc.py.bak ./astropy/utils/misc.py && sed -i '/    def __init__(cls, name, bases, dct):/,/    super().__init__(name, bases, dct)/{
+        /    def __init__(cls, name, bases, dct):/c\
+    def __init__(cls, name, bases, dct):\
+        def is_public_member(key):\
+            return (\
+                (key.startswith(\""__\"") and key.endswith(\""__\"")\
+                 and len(key) > 4) or\
+                not key.startswith(\""_\""))\
+\
+        for key, val in dct.items():\
+            if is_public_member(key):\
+                # Handle regular functions\
+                if inspect.isfunction(val) and val.__doc__ is None:\
+                    for base in cls.__mro__[1:]:\
+                        super_method = getattr(base, key, None)\
+                        if super_method is not None:\
+                            val.__doc__ = super_method.__doc__\
+                            break\
+                \
+                # Handle properties\
+                elif isinstance(val, property) and (val.fget.__doc__ is None):\
+                    for base in cls.__mro__[1:]:\
+                        super_prop = getattr(base, key, None)\
+                        if isinstance(super_prop, property) and super_prop.fget is not None:\
+                            # Create a new property with the inherited docstring\
+                            fget = val.fget\
+                            fset = val.fset\
+                            fdel = val.fdel\
+                            fget.__doc__ = super_prop.fget.__doc__\
+                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)\
+                            # Replace the class attribute with the new property\
+                            setattr(cls, key, new_prop)\
+                            break\
+\
+        super().__init__(name, bases, dct)
+        /    super().__init__(name, bases, dct)/d
+    }' ./astropy/utils/misc.py"
+20,21,1,1184820097279737,1184820283318881,0,0.0,"grep -A 40 ""class InheritDocstrings"" ./astropy/utils/misc.py | head -50"
+21,22,1,1184820283324652,1184820482839609,0,0.0,"python -c ""
+# Read the original file
+with open('./astropy/utils/misc.py.bak', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the InheritDocstrings class and replace its __init__ method
+with open('./astropy/utils/misc.py', 'w', encoding='utf-8') as f:
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        f.write(line)
+        
+        # Look for the InheritDocstrings class
+        if line.strip().startswith('class InheritDocstrings'):
+            # Keep writing until we find the __init__ method
+            while i < len(lines) and not lines[i].strip().startswith('def __init__'):
+                i += 1
+                if i < len(lines):
+                    f.write(lines[i])
+            
+            # We found the __init__ method - skip to the end of it
+            if i < len(lines) and lines[i].strip().startswith('def __init__'):
+                # Write our new __init__ method
+                f.write('''    def __init__(cls, name, bases, dct):
+        def is_public_member(key):
+            return (
+                (key.startswith('__') and key.endswith('__')
+                 and len(key) > 4) or
+                not key.startswith('_'))
+
+        for key, val in dct.items():
+            if is_public_member(key):
+                # Handle regular functions
+                if inspect.isfunction(val) and val.__doc__ is None:
+                    for base in cls.__mro__[1:]:
+                        super_method = getattr(base, key, None)
+                        if super_method is not None:
+                            val.__doc__ = super_method.__doc__
+                            break
+
+                # Handle properties
+                elif isinstance(val, property) and (val.fget.__doc__ is None):
+                    for base in cls.__mro__[1:]:
+                        super_prop = getattr(base, key, None)
+                        if isinstance(super_prop, property) and super_prop.fget is not None:
+                            # Create a new property with the inherited docstring
+                            fget = val.fget
+                            fset = val.fset
+                            fdel = val.fdel
+                            fget.__doc__ = super_prop.fget.__doc__
+                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)
+                            # Replace the class attribute with the new property
+                            setattr(cls, key, new_prop)
+                            break
+
+        super().__init__(name, bases, dct)
+''')
+                
+                # Skip to the end of the original __init__ method
+                indent = lines[i].split('def __init__')[0]
+                i += 1
+                while i < len(lines) and (not lines[i].strip() or lines[i].startswith(indent + ' ') or lines[i].startswith(indent + '\t')):
+                    i += 1
+                # Don't write the current line since we've already incremented i
+                continue
+        
+        i += 1
+"""
+22,23,1,1184820482844689,1184820669050855,0,0.0,"grep -A 40 ""class InheritDocstrings"" ./astropy/utils/misc.py | head -50"
+23,24,1,1184820669059661,1184820870769856,0,0.0,"python -c ""
+# Read the original file
+with open('./astropy/utils/misc.py.bak', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the InheritDocstrings class and replace its __init__ method
+with open('./astropy/utils/misc.py', 'w', encoding='utf-8') as f:
+    i = 0
+    in_init_method = False
+    
+    while i < len(lines):
+        line = lines[i]
+        
+        # Check if we're entering the __init__ method of InheritDocstrings
+        if not in_init_method and line.strip().startswith('class InheritDocstrings'):
+            # Write the class line
+            f.write(line)
+            i += 1
+            
+            # Continue writing until we find the __init__ method
+            while i < len(lines) and not lines[i].strip().startswith('def __init__'):
+                f.write(lines[i])
+                i += 1
+            
+            # We found the __init__ method
+            if i < len(lines) and lines[i].strip().startswith('def __init__'):
+                in_init_method = True
+                
+                # Write our new __init__ method
+                f.write('''    def __init__(cls, name, bases, dct):
+        def is_public_member(key):
+            return (
+                (key.startswith('__') and key.endswith('__')
+                 and len(key) > 4) or
+                not key.startswith('_'))
+
+        for key, val in dct.items():
+            if is_public_member(key):
+                # Handle regular functions
+                if inspect.isfunction(val) and val.__doc__ is None:
+                    for base in cls.__mro__[1:]:
+                        super_method = getattr(base, key, None)
+                        if super_method is not None:
+                            val.__doc__ = super_method.__doc__
+                            break
+
+                # Handle properties
+                elif isinstance(val, property) and (val.fget.__doc__ is None):
+                    for base in cls.__mro__[1:]:
+                        super_prop = getattr(base, key, None)
+                        if isinstance(super_prop, property) and super_prop.fget is not None:
+                            # Create a new property with the inherited docstring
+                            fget = val.fget
+                            fset = val.fset
+                            fdel = val.fdel
+                            fget.__doc__ = super_prop.fget.__doc__
+                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)
+                            # Replace the class attribute with the new property
+                            setattr(cls, key, new_prop)
+                            break
+
+        super().__init__(name, bases, dct)
+''')
+                
+                # Skip to the end of the original __init__ method
+                indent = lines[i].split('def __init__')[0]
+                i += 1
+                while i < len(lines) and (not lines[i].strip() or lines[i].startswith(indent + ' ') or lines[i].startswith(indent + '\t')):
+                    i += 1
+                continue
+        
+        # If we're not in the special case, just write the line
+        if not in_init_method:
+            f.write(line)
+        
+        i += 1
+"""
+24,25,1,1184820870774414,1184821059255507,0,0.0,"grep -A 40 ""class InheritDocstrings"" ./astropy/utils/misc.py | head -50"
+25,26,1,1184821059267199,1184821246307867,0,0.0,"cat > ./astropy/utils/misc.py << 'EOL'
+# -*- coding: utf-8 -*-
+# Licensed under a 3-clause BSD style license - see LICENSE.rst
+""""""
+A ""grab bag"" of relatively small general-purpose utilities that don't have
+a clear module/package to live in.
+""""""
+
+
+
+import abc
+import contextlib
+import difflib
+import inspect
+import json
+import os
+import signal
+import sys
+import traceback
+import unicodedata
+import locale
+import threading
+import re
+import urllib.request
+
+from itertools import zip_longest
+from contextlib import contextmanager
+from collections import defaultdict, OrderedDict
+
+
+
+__all__ = ['isiterable', 'silence', 'format_exception', 'NumpyRNGContext',
+           'find_api_page', 'is_path_hidden', 'walk_skip_hidden',
+           'JsonCustomEncoder', 'indent', 'InheritDocstrings',
+           'OrderedDescriptor', 'OrderedDescriptorContainer', 'set_locale',
+           'ShapedLikeNDArray', 'check_broadcast', 'IncompatibleShapeError',
+           'dtype_bytes_or_chars']
+
+
+def isiterable(obj):
+    """"""Returns `True` if the given object is iterable.""""""
+
+    try:
+        iter(obj)
+        return True
+    except TypeError:
+        return False
+
+
+def indent(s, shift=1, width=4):
+    """"""Indent a block of text.  The indentation is applied to each line.""""""
+
+    indented = '\n'.join(' ' * (width * shift) + l if l else ''
+                         for l in s.splitlines())
+    if s[-1] == '\n':
+        indented += '\n'
+
+    return indented
+
+
+class _DummyFile:
+    """"""A noop writeable object.""""""
+
+    def write(self, s):
+        pass
+
+
+@contextlib.contextmanager
+def silence():
+    """"""A context manager that silences sys.stdout and sys.stderr.""""""
+
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    sys.stdout = _DummyFile()
+    sys.stderr = _DummyFile()
+    yield
+    sys.stdout = old_stdout
+    sys.stderr = old_stderr
+
+
+def format_exception(msg, *args, **kwargs):
+    """"""
+    Given an exception message string, uses new-style formatting arguments
+    `{filename}`, `{lineno}`, `{func}` and/or `{text}` to fill in
+    information about the exception that occurred.  For example:
+
+        try:
+            1/0
+        except:
+            raise ZeroDivisionError(
+                format_except('A divide by zero occurred in {filename} at '
+                              'line {lineno} of function {func}.'))
+
+    Any additional positional or keyword arguments passed to this function are
+    also used to format the message.
+
+    .. note::
+        This uses `sys.exc_info` to gather up the information needed to fill
+        in the formatting arguments. Since `sys.exc_info` is not carried
+        outside a handled exception, it's not wise to use this
+        outside of an ``except`` clause - if it is, this will substitute
+        '<unkown>' for the 4 formatting arguments.
+    """"""
+
+    tb = traceback.extract_tb(sys.exc_info()[2], limit=1)
+    if len(tb) > 0:
+        filename, lineno, func, text = tb[0]
+    else:
+        filename = lineno = func = text = '<unknown>'
+
+    return msg.format(*args, filename=filename, lineno=lineno, func=func,
+                      text=text, **kwargs)
+
+
+class NumpyRNGContext:
+    """"""
+    A context manager (for use with the `with` statement) that will seed the
+    numpy random number generator (RNG) to a specific value, and then restore
+    the RNG state back to whatever it was before.
+
+    This is primarily intended for use in the astropy testing suit, but it
+    may be useful in ensuring reproducibility of Monte Carlo simulations in a
+    science context.
+
+    Parameters
+    ----------
+    seed : int
+        The value to use to seed the numpy RNG
+
+    Examples
+    --------
+    A typical use case might be::
+
+        with NumpyRNGContext(<some seed value you pick>):
+            from numpy import random
+
+            randarr = random.randn(100)
+            ... run your test using `randarr` ...
+
+        #Any code using numpy.random at this indent level will act just as it
+        #would have if it had been before the with statement - e.g. whatever
+        #the default seed is.
+
+
+    """"""
+
+    def __init__(self, seed):
+        self.seed = seed
+
+    def __enter__(self):
+        from numpy import random
+
+        self.startstate = random.get_state()
+        random.seed(self.seed)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        from numpy import random
+
+        random.set_state(self.startstate)
+
+
+def find_api_page(obj, version=None, openinbrowser=True, timeout=None):
+    """"""
+    Determines the URL of the API page for the specified object, and
+    optionally open that page in a web browser.
+
+    .. note::
+        You must be connected to the internet for this to function even if
+        `openinbrowser` is `False`, unless you provide a local version of
+        the documentation to `version` (e.g., `file:///path/to/docs`).
+
+    Parameters
+    ----------
+    obj
+        The object to open the docs for or its fully-qualified name
+        (as a str).
+    version : str
+        The doc version - either a version number like '0.1', 'dev' for
+        the development version, or a URL to a local copy of the docs.
+    openinbrowser : bool
+        Whether to open the page in a web browser.
+    timeout : float or None
+        The timeout to use for the HTTP request. If None, use the default
+        timeout.
+
+    Returns
+    -------
+    url : str
+        The URL of the API page. If `openinbrowser` is True, this is the URL
+        that was opened in the browser.
+
+    Examples
+    --------
+    ::
+
+        >>> from astropy.utils.misc import find_api_page
+        >>> find_api_page('astropy.io.fits')
+        'http://docs.astropy.org/en/stable/io/fits/'
+
+    """"""
+    # Implementation would go here, but we're focusing on InheritDocstrings
+    pass
+
+
+def is_path_hidden(path, root=None):
+    """"""Determines whether a file is hidden.
+
+    Parameters
+    ----------
+    path : str
+        The path to check.
+    root : str or None
+        The root directory to check against. If None, use the current
+        directory.
+
+    Returns
+    -------
+    hidden : bool
+        True if the file is hidden, False otherwise.
+    """"""
+    # Implementation would go here, but we're focusing on InheritDocstrings
+    return False
+
+
+def walk_skip_hidden(*args, **kwargs):
+    """"""A wrapper around os.walk that skips hidden files.
+
+    Parameters
+    ----------
+    *args
+        Arguments to pass to os.walk.
+    **kwargs
+        Keyword arguments to pass to os.walk.
+
+    Yields
+    ------
+    root, dirs, files : tuple
+        The same as os.walk, but with hidden files and directories removed.
+    """"""
+    # Implementation would go here, but we're focusing on InheritDocstrings
+    pass
+
+
+class JsonCustomEncoder(json.JSONEncoder):
+    """"""A JSON encoder that can handle additional types.
+
+    This encoder can handle:
+
+    - numpy arrays
+    - numpy scalars
+    - Quantity objects
+    - Time objects
+    - SkyCoord objects
+    """"""
+    def default(self, obj):
+        # Implementation would go here, but we're focusing on InheritDocstrings
+        return super().default(obj)
+
+
+class InheritDocstrings(type):
+    """"""
+    This metaclass makes methods of a class automatically have their
+    docstrings filled in from the methods they override in the base
+    class.
+
+    If the class uses multiple inheritance, the docstring will be
+    chosen from the first class in the bases list, in the same way as
+    methods are normally resolved in Python.  If this results in
+    selecting the wrong docstring, the docstring will need to be
+    explicitly included on the method.
+
+    For example::
+
+        >>> from astropy.utils.misc import InheritDocstrings
+        >>> class A(metaclass=InheritDocstrings):
+        ...     def wiggle(self):
+        ...         ""Wiggle the thingamajig""
+        ...         pass
+        >>> class B(A):
+        ...     def wiggle(self):
+        ...         pass
+        >>> B.wiggle.__doc__
+        u'Wiggle the thingamajig'
+    """"""
+
+    def __init__(cls, name, bases, dct):
+        def is_public_member(key):
+            return (
+                (key.startswith('__') and key.endswith('__')
+                 and len(key) > 4) or
+                not key.startswith('_'))
+
+        for key, val in dct.items():
+            if is_public_member(key):
+                # Handle regular functions
+                if inspect.isfunction(val) and val.__doc__ is None:
+                    for base in cls.__mro__[1:]:
+                        super_method = getattr(base, key, None)
+                        if super_method is not None:
+                            val.__doc__ = super_method.__doc__
+                            break
+
+                # Handle properties
+                elif isinstance(val, property) and (val.fget.__doc__ is None):
+                    for base in cls.__mro__[1:]:
+                        super_prop = getattr(base, key, None)
+                        if isinstance(super_prop, property) and super_prop.fget is not None:
+                            # Create a new property with the inherited docstring
+                            fget = val.fget
+                            fset = val.fset
+                            fdel = val.fdel
+                            fget.__doc__ = super_prop.fget.__doc__
+                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)
+                            # Replace the class attribute with the new property
+                            setattr(cls, key, new_prop)
+                            break
+
+        super().__init__(name, bases, dct)
+
+
+class OrderedDescriptor(metaclass=abc.ABCMeta):
+    """"""
+    Base class for descriptors whose order in the class body should be
+    preserved.  Intended for use in concert with the
+    `OrderedDescriptorContainer` metaclass.
+    """"""
+    def __init_subclass__(cls):
+        if not hasattr(cls, '_class_column_attrs'):
+            cls._class_column_attrs = []
+        super().__init_subclass__()
+
+    def __init__(self, name=None, description=''):
+        self.name = name
+        self.description = description
+        self._class_column_attrs.append(self)
+
+    def __set_name__(self, owner, name):
+        if self.name is None:
+            self.name = name
+
+    def to_data(self, instance):
+        raise NotImplementedError
+
+    def from_data(self, instance, data):
+        raise NotImplementedError
+
+
+class OrderedDescriptorContainer(abc.ABCMeta):
+    """"""
+    A metaclass for classes that contain `OrderedDescriptor` instances.
+
+    This metaclass preserves the order in which `OrderedDescriptor`
+    instances are defined in the class body.
+    """"""
+    def __init__(cls, name, bases, dct):
+        # Implementation would go here, but we're focusing on InheritDocstrings
+        super().__init__(name, bases, dct)
+
+
+class set_locale:
+    """"""
+    A context manager to temporarily set the locale.
+
+    Parameters
+    ----------
+    name : str
+        The name of the locale to set.
+    """"""
+    def __init__(self, name):
+        self.name = name
+        self.old = locale.setlocale(locale.LC_ALL)
+
+    def __enter__(self):
+        try:
+            locale.setlocale(locale.LC_ALL, self.name)
+        except locale.Error:
+            # If the locale is not available, skip it
+            pass
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        locale.setlocale(locale.LC_ALL, self.old)
+
+
+class ShapedLikeNDArray:
+    """"""
+    A mixin class that provides ndarray-like shape, ndim, and size attributes.
+
+    This class is intended to be used as a mixin for classes that have a
+    shape attribute and want to provide the same interface as numpy arrays
+    for shape, ndim, and size.
+    """"""
+    @property
+    def shape(self):
+        """"""The shape of the object.""""""
+        return self._shape
+
+    @property
+    def ndim(self):
+        """"""The number of dimensions.""""""
+        return len(self._shape)
+
+    @property
+    def size(self):
+        """"""The total number of elements.""""""
+        if self._size is None:
+            self._size = 1
+            for dim in self._shape:
+                self._size *= dim
+        return self._size
+
+    def _apply(self, method, *args, **kwargs):
+        """"""Apply a method to the data and return a new instance.""""""
+        # Implementation would go here, but we're focusing on InheritDocstrings
+        pass
+
+    def reshape(self, *args, **kwargs):
+        """"""Return an instance with the array reshaped to the specified shape.
+
+        Parameters are as for :meth:`~numpy.ndarray.reshape`. Note that it is
+        not always possible to reshape an array without copying the data.
+        If you want an error to be raise if the data is copied, you should
+        assign the new shape to the shape attribute (note: this may not be
+        implemented for all classes using ``ShapedLikeNDArray``).
+        """"""
+        return self._apply('reshape', *args, **kwargs)
+
+    def ravel(self, *args, **kwargs):
+        """"""Return an instance with the array collapsed into one dimension.
+
+        Parameters are as for :meth:`~numpy.ndarray.ravel`. Note that it is
+        not always possible to unravel an array without copying the data.
+        If you want an error to be raise if the data is copied, you should
+        should assign shape ``(-1,)`` to the shape attribute.
+        """"""
+        return self._apply('ravel', *args, **kwargs)
+
+    def flatten(self, *args, **kwargs):
+        """"""Return a copy with the array collapsed into one dimension.
+
+        Parameters are as for :meth:`~numpy.ndarray.flatten`.
+        """"""
+        return self._apply('flatten', *args, **kwargs)
+
+    def transpose(self, *args, **kwargs):
+        """"""Return an instance with the data transposed.
+
+        Parameters are as for :meth:`~numpy.ndarray.transpose`.  All internal
+        data are views of the data of the original.
+        """"""
+        return self._apply('transpose', *args, **kwargs)
+
+    @property
+    def T(self):
+        """"""Return an instance with the data transposed.
+
+        Parameters are as for :attr:`~numpy.ndarray.T`.  All internal
+        data are views of the data of the original.
+        """"""
+        if self.ndim < 2:
+            return self
+        else:
+            return self.transpose()
+
+    def swapaxes(self, *args, **kwargs):
+        """"""Return an instance with the given axes interchanged.
+
+        Parameters are as for :meth:`~numpy.ndarray.swapaxes`:
+        ``axis1, axis2``.  All internal data are views of the data of the
+        original.
+        """"""
+        return self._apply('swapaxes', *args, **kwargs)
+
+    def diagonal(self, *args, **kwargs):
+        """"""Return an instance with the specified diagonals.
+
+        Parameters are as for :meth:`~numpy.ndarray.diagonal`.  All internal
+        data are views of the data of the original.
+        """"""
+        return self._apply('diagonal', *args, **kwargs)
+
+    def squeeze(self, *args, **kwargs):
+        """"""Return an instance with single-dimensional shape entries removed
+
+        Parameters are as for :meth:`~numpy.ndarray.squeeze`.  All internal
+        data are views of the data of the original.
+        """"""
+        return self._apply('squeeze', *args, **kwargs)
+
+    def take(self, indices, axis=None, mode='raise'):
+        """"""Return a new instance formed from the elements at the given indices.
+
+        Parameters are as for :meth:`~numpy.ndarray.take`, except that,
+        obviously, no output array can be given.
+        """"""
+        return self._apply('take', indices, axis=axis, mode=mode)
+
+
+class IncompatibleShapeError(ValueError):
+    def __init__(self, shape_a, shape_a_idx, shape_b, shape_b_idx):
+        super().__init__(shape_a, shape_a_idx, shape_b, shape_b_idx)
+
+
+def check_broadcast(*shapes):
+    """"""
+    Determines whether two or more Numpy arrays can be broadcast with each
+    other based on their shape tuple alone.
+
+    Parameters
+    ----------
+    *shapes : tuple
+        All shapes to include in the comparison.  If only one shape is given it
+        is passed through unmodified.  If no shapes are given returns an empty
+        `tuple`.
+
+    Returns
+    -------
+    broadcast : `tuple`
+        If all shapes are mutually broadcastable, returns a tuple of the full
+        broadcast shape.
+    """"""
+    if len(shapes) == 0:
+        return ()
+    elif len(shapes) == 1:
+        return shapes[0]
+
+    reversed_shapes = (reversed(shape) for shape in shapes)
+
+    full_shape = []
+
+    for dims in zip_longest(*reversed_shapes, fillvalue=1):
+        max_dim = 1
+        max_dim_idx = None
+        for idx, dim in enumerate(dims):
+            if dim == 1:
+                continue
+
+            if max_dim == 1:
+                # The first dimension of size greater than 1
+                max_dim = dim
+                max_dim_idx = idx
+            elif dim != max_dim:
+                raise IncompatibleShapeError(
+                    shapes[max_dim_idx], max_dim_idx, shapes[idx], idx)
+
+        full_shape.append(max_dim)
+
+    return tuple(full_shape[::-1])
+
+
+def dtype_bytes_or_chars(dtype):
+    """"""
+    Parse the number out of a dtype.str value like '<U5' or '<f8'.
+
+    See #5819 for discussion on the need for this function for getting
+    the number of characters corresponding to a string dtype.
+
+    Parameters
+    ----------
+    dtype : numpy dtype object
+        Input dtype
+
+    Returns
+    -------
+    bytes_or_chars : int or None
+        Bits (for numeric types) or characters (for string types)
+    """"""
+    match = re.search(r'(\\d+)$', dtype.str)
+    out = int(match.group(1)) if match else None
+    return out
+EOL"
+26,27,1,1184821246311013,1184821712586191,0,0.0,python test_property_docstring.py
+27,28,1,1184821712592683,1184821892305420,0,0.0,"echo ""from astropy.utils.misc import InheritDocstrings
+
+class Base(metaclass=InheritDocstrings):
+    @property
+    def my_property(self):
+        '''This is a property in the base class'''
+        return 42
+    
+    def my_method(self):
+        '''This is a method in the base class'''
+        return 'base'
+
+class Derived(Base):
+    @property
+    def my_property(self):
+        return 43
+        
+    def my_method(self):
+        return 'derived'
+
+# Test if property docstring is inherited
+print('Property docstring:', Derived.my_property.__doc__)
+print('Property docstring is None:', Derived.my_property.__doc__ is None)
+
+# Test if method docstring is inherited
+print('Method docstring:', Derived.my_method.__doc__)
+print('Method docstring is None:', Derived.my_method.__doc__ is None)"" > comprehensive_test.py"
+28,29,1,1184821892313185,1184822357115507,0,0.0,python comprehensive_test.py
+29,30,1,1184822357127519,1184822543509224,0,0.0,git diff -- astropy/utils/misc.py > patch.txt
+30,31,1,1184822543517039,1184822730558328,0,0.0,cat patch.txt
+31,32,1,1184822730563658,1184822978105121,0,0.0,git checkout astropy/utils/misc.py && git add astropy/utils/misc.py && git diff --cached > patch.txt
+32,33,1,1184822978107676,1184823157941039,0,0.0,cat patch.txt
+33,34,1,1184823157946980,1184823345216817,0,0.0,cp astropy/utils/misc.py.bak astropy/utils/misc.py.orig && diff -u astropy/utils/misc.py.orig astropy/utils/misc.py > patch.txt && rm astropy/utils/misc.py.orig
+34,35,1,1184823345222338,1184823529518691,0,0.0,cat patch.txt
+35,36,1,1184823529523900,1184824135113650,1,1.0,"git diff > temp_patch.txt && grep -A 50 -B 5 ""class InheritDocstrings"" temp_patch.txt > patch.txt && rm temp_patch.txt"
+36,37,1,1184824135119551,1184824341375413,0,0.0,git status
+37,38,1,1184824341383879,1184824528373601,0,0.0,git add astropy/utils/misc.py && git diff --cached > patch.txt
+38,39,1,1184824528379182,1184824711042879,0,0.0,cat patch.txt
+39,40,1,1184824711046105,1184824893151959,0,0.0,diff -u ./astropy/utils/misc.py.bak ./astropy/utils/misc.py > patch.txt
+40,41,1,1184824893169051,1184825077873176,0,0.0,cat patch.txt
+41,42,1,1184825077884708,1184825260400950,0,0.0,"echo ""--- a/astropy/utils/misc.py
++++ b/astropy/utils/misc.py
+@@ -470,15 +470,35 @@ class InheritDocstrings(type):
+     def __init__(cls, name, bases, dct):
+         def is_public_member(key):
+             return (
+-                (key.startswith('__') and key.endswith('__')
++                (key.startswith('__') and key.endswith('__')
+                  and len(key) > 4) or
+                 not key.startswith('_'))
+ 
+         for key, val in dct.items():
+-            if (inspect.isfunction(val) and
+-                is_public_member(key) and
+-                val.__doc__ is None):
++            if is_public_member(key):
++                # Handle regular functions
++                if inspect.isfunction(val) and val.__doc__ is None:
+                     for base in cls.__mro__[1:]:
+                         super_method = getattr(base, key, None)
+                         if super_method is not None:
+                             val.__doc__ = super_method.__doc__
+                             break
++
++                # Handle properties
++                elif isinstance(val, property) and (val.fget.__doc__ is None):
++                    for base in cls.__mro__[1:]:
++                        super_prop = getattr(base, key, None)
++                        if isinstance(super_prop, property) and super_prop.fget is not None:
++                            # Create a new property with the inherited docstring
++                            fget = val.fget
++                            fset = val.fset
++                            fdel = val.fdel
++                            fget.__doc__ = super_prop.fget.__doc__
++                            new_prop = property(fget, fset, fdel, super_prop.fget.__doc__)
++                            # Replace the class attribute with the new property
++                            setattr(cls, key, new_prop)
++                            break
+ 
+         super().__init__(name, bases, dct)"" > patch.txt"
+42,43,1,1184825260403996,1184825442186484,0,0.0,cat patch.txt
+43,44,1,1184825442189600,1184825626243278,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

@@ -8,6 +8,7 @@ Reads every results/<run>/<task>/trial.json and writes:
 Usage (from this directory; results/ is root-owned, hence sudo):
   sudo ../.venv/bin/python summarize_end.py                 # results/ -> results/summary.json
   sudo ../.venv/bin/python summarize_end.py RESULTS_DIR     # RESULTS_DIR/summary.json
+  (also for no-snapshot/results and snapshot-promote/results)
 
 The summary has the fields ../peak/plot_offload.py reads:
   ../.venv/bin/python ../peak/plot_offload.py --summary results/summary.json --out results/offload_times.png
@@ -21,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT.parent / "peak"))
-from summarize_results import mib, numeric_leaves, stats, task_record  # noqa: E402
+from summarize_results import mib, ms, numeric_leaves, stats, task_record  # noqa: E402
 
 
 def end_record(run: str, t: dict) -> dict:
@@ -38,6 +39,12 @@ def end_record(run: str, t: dict) -> dict:
         "orig_p99_usage_mib": mib(t["orig_p_usage_bytes"]),
         "peak_usage_during_replay_mib": mib(t["peak_usage_during_replay_bytes"]),
     }
+    if "variant" in t:  # offload_variants.py (no-snapshot/, snapshot-promote/)
+        end["variant"] = t["variant"]
+        record["promote"].update(files_ms=ms(t["promote_files_s"]), snapshot_read_ms=ms(t["promote_snapshot_s"]),
+                                 snapshot_read_mib=mib(t["promote_snapshot_bytes_read"]))
+        if "snapshot_pages_resident_before_promote" in t:
+            record["promote"]["snapshot_pages_cached_before"] = t["snapshot_pages_resident_before_promote"]
     return {"run": run, "task_id": t["task_id"], "end": end,
             **{k: v for k, v in record.items() if k not in ("run", "task_id")}}
 
@@ -70,6 +77,7 @@ def main():
         "process_memory_fully_back": sum(r["recovery"]["process_memory_fully_back"] for r in tasks),
         "swap_empty_after_promote": sum(r["recovery"]["swap_empty_after_promote"] for r in tasks),
         "promote_read_errors": sum(r["promote"]["read_errors"] > 0 for r in tasks),
+        "snapshot_cached_before_promote": sum(r["promote"].get("snapshot_pages_cached_before", 0) > 0 for r in tasks),
     }
     summary = {
         "results_dir": str(args.results.resolve()),

@@ -1,0 +1,93 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1184974577640112,1184986654155095,0,0.0,"find . -type f -exec grep -l ""parse_duration\|dateparse"" {} \;"
+1,2,1,1184986654168830,1184986840806652,0,0.0,cat django/utils/dateparse.py
+2,3,1,1184986840813334,1184987019638114,0,0.0,"echo ""from django.utils.dateparse import parse_duration\nprint('Testing negative duration -1:30:45:')\nprint(parse_duration('-1:30:45'))\nprint('Testing negative duration -2:-30:-45:')\nprint(parse_duration('-2:-30:-45'))"" > test_negative_duration.py"
+3,4,1,1184987019640769,1184987225740627,1,1.0,python test_negative_duration.py
+4,5,1,1184987225753151,1184987409301390,0,0.0,"cat > test_negative_duration.py << 'EOL'
+from django.utils.dateparse import parse_duration
+print('Testing negative duration -1:30:45:')
+print(parse_duration('-1:30:45'))
+print('Testing negative duration -2:-30:-45:')
+print(parse_duration('-2:-30:-45'))
+EOL"
+5,6,1,1184987409305478,1184987669492055,0,0.0,python test_negative_duration.py
+6,7,1,1184987669503056,1184987854680684,0,0.0,"sed -i ""s/((?:(?P<hours>-?\\d+):)(?=\\d+:\\d+))?/((?:(?P<hours>-?\\d+):)(?=-?\\d+:-?\\d+))?/g"" django/utils/dateparse.py"
+7,8,1,1184987854687597,1184988088946672,0,0.0,python test_negative_duration.py
+8,9,1,1184988089013847,1184988277268414,0,0.0,"cat > test_negative_duration.py << 'EOL'
+from django.utils.dateparse import parse_duration, standard_duration_re
+import re
+
+def test_duration(s):
+    print(f""\nTesting '{s}':"")
+    match = standard_duration_re.match(s)
+    if match:
+        print(f""  Match found: {match.groupdict()}"")
+        duration = parse_duration(s)
+        print(f""  Parsed duration: {duration}"")
+    else:
+        print(f""  No match found"")
+
+# Test various negative duration formats
+test_duration('-1:30:45')
+test_duration('-2:-30:-45')
+test_duration('-1:00:00')
+test_duration('1:30:45')
+test_duration('-10:15:30')
+EOL"
+9,10,1,1184988277276229,1184988512154443,0,0.0,python test_negative_duration.py
+10,11,1,1184988512161847,1184988696531603,0,0.0,"sed -i ""s/((?:(?P<hours>-?\\d+):)(?=\\d+:\\d+))?/((?:(?P<hours>-?\\d+):)(?=-?\\d+:-?\\d+))?/g"" django/utils/dateparse.py"
+11,12,1,1184988696546611,1184988932386313,0,0.0,python test_negative_duration.py
+12,13,1,1184988932392595,1184989114898524,0,0.0,"grep -A 5 ""standard_duration_re"" django/utils/dateparse.py"
+13,14,1,1184989114904636,1184989296648728,0,0.0,sed -i 's/((?:(?P<hours>-?\\d+):)(?=\\d+:\\d+))?/((?:(?P<hours>-?\\d+):)(?=-?\\d+:-?\\d+))?/g' django/utils/dateparse.py
+14,15,1,1184989296658236,1184989475670847,0,0.0,"grep -A 5 ""standard_duration_re"" django/utils/dateparse.py"
+15,16,1,1184989475675946,1184989712728970,0,0.0,python test_negative_duration.py
+16,17,1,1184989712747164,1184989892993163,0,0.0,"cat > test_timedelta.py << 'EOL'
+from datetime import timedelta
+
+# Test how timedelta handles negative components
+days = timedelta(0)  # No days offset
+duration = -1 * timedelta(hours=2, minutes=30, seconds=45)
+print(f""-1 * timedelta(hours=2, minutes=30, seconds=45) = {duration}"")
+
+# Test with direct negative values
+duration = timedelta(hours=-2, minutes=-30, seconds=-45)
+print(f""timedelta(hours=-2, minutes=-30, seconds=-45) = {duration}"")
+EOL"
+17,18,1,1184989893023008,1184990089030771,0,0.0,python test_timedelta.py
+18,19,1,1184990089048634,1184990269201950,0,0.0,"cat > verify_fix.py << 'EOL'
+from django.utils.dateparse import parse_duration, standard_duration_re
+
+def verify_negative_duration(duration_str):
+    print(f""\nTesting \""{duration_str}\"":"")
+    match = standard_duration_re.match(duration_str)
+    if match:
+        print(f""  Match found: {match.groupdict()}"")
+        duration = parse_duration(duration_str)
+        print(f""  Parsed duration: {duration}"")
+        return True
+    else:
+        print(f""  No match found - this indicates the bug still exists"")
+        return False
+
+# Test the specific case mentioned in the PR
+duration_str = ""-1:30:45""
+match = standard_duration_re.match(duration_str)
+print(f""\nPattern match for '{duration_str}': {match is not None}"")
+if match:
+    print(f""Groups: {match.groupdict()}"")
+    
+# Test negative hours, minutes, and seconds
+duration_str = ""-2:-30:-45""
+match = standard_duration_re.match(duration_str)
+print(f""\nPattern match for '{duration_str}': {match is not None}"")
+if match:
+    print(f""Groups: {match.groupdict()}"")
+    
+# Verify the fix works for the case mentioned in the PR
+success = verify_negative_duration(""-1:30:45"")
+print(f""\nFix verification: {'PASSED' if success else 'FAILED'}"")
+EOL"
+19,20,1,1184990269209394,1184990506769426,0,0.0,python verify_fix.py
+20,21,1,1184990506775547,1184990696995653,0,0.0,git diff -- django/utils/dateparse.py > patch.txt
+21,22,1,1184990697004329,1184990888982315,0,0.0,cat patch.txt
+22,23,1,1184990888987053,1184991070473033,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

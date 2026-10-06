@@ -1,0 +1,2132 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1183417641443831,1183418677065803,0,0.0,"find . -type f -name ""*.py"" | grep -v ""__pycache__"" | xargs grep -l ""def escape"""
+1,2,1,1183418677091281,1183418866229323,0,0.0,cat ./django/utils/html.py
+2,3,1,1183418866237639,1183419114724553,0,0.0,"python -c ""import html; help(html.escape)"""
+3,4,1,1183419114736185,1183419299635136,0,0.0,"echo ""from django.utils.html import escape as django_escape\nimport html\n\ntest_string = \""<div class='test'>Hello & World</div>\""\nprint('Django escape:', django_escape(test_string))\nprint('stdlib html.escape:', html.escape(test_string))\nprint('stdlib html.escape (quote=False):', html.escape(test_string, quote=False))\n"" > compare_escape.py"
+4,5,1,1183419299642600,1183419497818108,1,1.0,python compare_escape.py
+5,6,1,1183419497831243,1183419682054840,0,0.0,"cat > compare_escape.py << 'EOL'
+from django.utils.html import escape as django_escape
+import html
+
+test_string = ""<div class='test'>Hello & World</div>""
+print('Django escape:', django_escape(test_string))
+print('stdlib html.escape:', html.escape(test_string))
+print('stdlib html.escape (quote=False):', html.escape(test_string, quote=False))
+EOL"
+6,7,1,1183419682062103,1183419991121133,0,0.0,python compare_escape.py
+7,8,1,1183419991146701,1183420176177661,0,0.0,"cat > /tmp/new_html.py << 'EOL'
+""""""HTML utilities suitable for global use.""""""
+
+import json
+import re
+from html.parser import HTMLParser
+from html import escape as html_escape  # Import stdlib html.escape
+from urllib.parse import (
+    parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit,
+)
+
+from django.utils.functional import Promise, keep_lazy, keep_lazy_text
+from django.utils.http import RFC3986_GENDELIMS, RFC3986_SUBDELIMS
+from django.utils.safestring import SafeData, SafeString, mark_safe
+from django.utils.text import normalize_newlines
+
+
+@keep_lazy(str, SafeString)
+def escape(text):
+    """"""
+    Return the given text with ampersands, quotes and angle brackets encoded
+    for use in HTML.
+
+    Always escape input, even if it's already escaped and marked as such.
+    This may result in double-escaping. If this is a concern, use
+    conditional_escape() instead.
+    """"""
+    # Use Python stdlib html.escape() instead of custom translation
+    # Note: This changes ' to &#x27 instead of &#39;, but both are valid HTML
+    return mark_safe(html_escape(str(text), quote=True))
+
+
+_js_escapes = {
+    ord('\\'): '\\u005C',
+    ord(""'\""): '\\u0027',
+    ord('""'): '\\u0022',
+    ord('>'): '\\u003E',
+    ord('<'): '\\u003C',
+    ord('&'): '\\u0026',
+    ord('='): '\\u003D',
+    ord('-'): '\\u002D',
+    ord(';'): '\\u003B',
+    ord('`'): '\\u0060',
+    ord('\u2028'): '\\u2028',
+    ord('\u2029'): '\\u2029'
+}
+
+# Escape every ASCII character with a value less than 32.
+_js_escapes.update((ord('%c' % z), '\\u%04X' % z) for z in range(32))
+
+
+@keep_lazy(str, SafeString)
+def escapejs(value):
+    """"""Hex encode characters for use in JavaScript strings.""""""
+    return mark_safe(str(value).translate(_js_escapes))
+
+
+_json_script_escapes = {
+    ord('>'): '\\u003E',
+    ord('<'): '\\u003C',
+    ord('&'): '\\u0026',
+}
+
+
+def json_script(value, element_id):
+    """"""
+    Escape all the HTML/XML special characters with their unicode escapes, so
+    value is safe to be output anywhere except for inside a tag attribute. Wrap
+    the escaped JSON in a script tag.
+    """"""
+    from django.core.serializers.json import DjangoJSONEncoder
+    json_str = json.dumps(value, cls=DjangoJSONEncoder).translate(_json_script_escapes)
+    return format_html(
+        '<script id=""{}"" type=""application/json"">{}</script>',
+        element_id, mark_safe(json_str)
+    )
+
+
+def conditional_escape(text):
+    """"""
+    Similar to escape(), except that it doesn't operate on pre-escaped strings.
+
+    This function relies on the __html__ convention used both by Django's
+    SafeData class and by third-party libraries like markupsafe.
+    """"""
+    if isinstance(text, Promise):
+        text = str(text)
+    if hasattr(text, '__html__'):
+        return text.__html__()
+    else:
+        return escape(text)
+
+
+def format_html(format_string, *args, **kwargs):
+    """"""
+    Similar to str.format, but pass all arguments through conditional_escape(),
+    and call mark_safe() on the result. This function should be used instead
+    of str.format or % interpolation to build up small HTML fragments.
+    """"""
+    args_safe = map(conditional_escape, args)
+    kwargs_safe = {k: conditional_escape(v) for (k, v) in kwargs.items()}
+    return mark_safe(format_string.format(*args_safe, **kwargs_safe))
+
+
+def format_html_join(sep, format_string, args_generator):
+    """"""
+    A wrapper of format_html, for the common case of a group of arguments that
+    need to be formatted using the same format string, and then joined using
+    'sep'. 'sep' is also passed through conditional_escape.
+
+    'args_generator' should be an iterator that returns the sequence of 'args'
+    that will be passed to format_html.
+
+    Example:
+
+      format_html_join('\n', ""<li>{} {}</li>"", ((u.first_name, u.last_name)
+                                                  for u in users))
+    """"""
+    return mark_safe(conditional_escape(sep).join(
+        format_html(format_string, *args)
+        for args in args_generator
+    ))
+
+
+@keep_lazy_text
+def linebreaks(value, autoescape=False):
+    """"""Convert newlines into <p> and <br>s.""""""
+    value = normalize_newlines(value)
+    paras = re.split('\n{2,}', str(value))
+    if autoescape:
+        paras = ['<p>%s</p>' % escape(p).replace('\n', '<br>') for p in paras]
+    else:
+        paras = ['<p>%s</p>' % p.replace('\n', '<br>') for p in paras]
+    return '\n\n'.join(paras)
+
+
+class MLStripper(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self.reset()
+        self.fed = []
+
+    def handle_data(self, d):
+        self.fed.append(d)
+
+    def handle_entityref(self, name):
+        self.fed.append('&%s;' % name)
+
+    def handle_charref(self, name):
+        self.fed.append('&#%s;' % name)
+
+    def get_data(self):
+        return ''.join(self.fed)
+
+
+def strip_tags(value):
+    """"""Return the given HTML with all tags stripped.""""""
+    if hasattr(value, 'strip_tags'):
+        # The object has a strip_tags() method: let's use it
+        return value.strip_tags()
+    s = MLStripper()
+    s.feed(str(value))
+    s.close()
+    return s.get_data()
+
+
+def remove_tags(html, tags):
+    """"""Returns the given HTML with given tags removed.""""""
+    tags = [re.escape(tag) for tag in tags.split()]
+    tags_re = '(%s)' % '|'.join(tags)
+    starttag_re = re.compile(r'<%s(/?>|\s+[^>]*>)' % tags_re, re.I)
+    endtag_re = re.compile(r'<\\/%s>' % tags_re)
+    # Remove start and end tag, but not the contents.
+    html = starttag_re.sub('', html)
+    html = endtag_re.sub('', html)
+    return html
+
+
+def strip_spaces_between_tags(value):
+    """"""Return the given HTML with spaces between tags removed.""""""
+    return re.sub(r'>\s+<', '><', str(value))
+
+
+def strip_spaces_after_tabs(value):
+    """"""Takes output from strip_spaces_between_tags and removes spaces after tabs.""""""
+    return value.replace('\t ', '\t').replace('\r\n', '\n')
+
+
+def smart_urlquote(url, attrs=None):
+    """"""
+    Return a URL-encoded string.
+
+    If attrs is None, it's assumed that the url will be embedded in an HTML
+    attribute. This means '&' will be encoded as '&amp;'. Otherwise, the attrs
+    argument should be a list of attribute names on the link tag. For example
+    ['href', 'data-url'] would not escape '&' characters in the URL.
+    """"""
+    # Prepend scheme for URL without scheme
+    # This is consistent with urllib.parse.urlsplit.
+    if url.startswith('//'):
+        url = 'http:' + url
+    # We don't need to encode the url ourselves because urlsplit and urlunsplit
+    # will do it for us. We just need to use quote() in the right places.
+    url = urlsplit(url)
+    path = quote(url[2] or '')
+    url = list(url)
+    url[2] = path
+    # We want to use safe=''; this way, spaces (and any other character that
+    # would be encoded) are quoted. We also want to quote '#', which would
+    # otherwise be treated as the start of a fragment, and '&', which would
+    # otherwise be treated as the start of a query.
+    
+    # Quote both the key and the value of each query argument
+    query = '&'.join(
+        quote(key, safe='') + '=' + quote(value, safe='')
+        for key, value in parse_qsl(url[3] or '')
+    )
+    url[3] = query
+    # Return encoded URL
+    return urlunsplit(url)
+
+
+def urlize(value, trim_url_limit=None, nofollow=False, autoescape=False):
+    """"""
+    Convert URLs in plain text into clickable links.
+
+    Convert www.example.com, http://example.com and
+    username@example.com into links. Does not convert links containing
+    newlines.
+
+    If trim_url_limit is not None, truncate the displayed URL in the link to
+    trim_url_limit characters. Most users will find the display of long URLs
+    confusing and unintuitive. For example, the URL
+    ``https://example.com/dir/subdir/custom_template.html``
+    might be displayed as ``https://example.com/dir/subdir/custom_t...``.
+
+    If nofollow is True, add the rel=""nofollow"" attribute to the links.
+
+    If autoescape is True, autoescape the link text and URLs.
+    """"""
+    safe_input = isinstance(value, SafeData)
+    words = word_split_re.split(str(value))
+    for i, word in enumerate(words):
+        if '.' in word or '@' in word or ':' in word:
+            # lead: Current punctuation trimmed from the beginning of the word.
+            # middle: Current state of the word.
+            # trail: Current punctuation trimmed from the end of the word.
+            lead, middle, trail = '', word, ''
+            # Deal with punctuation.
+            lead, middle, trail = trim_punctuation(lead, middle, trail)
+
+            # Make URL we want to point to.
+            url = None
+            nofollow_attr = ' rel=""nofollow""' if nofollow else ''
+            if simple_url_re.match(middle):
+                url = smart_urlquote(unescape(middle))
+            elif simple_url_2_re.match(middle):
+                url = smart_urlquote('http://%s' % unescape(middle))
+            elif ':' not in middle and is_email_simple(middle):
+                local, domain = middle.rsplit('@', 1)
+                try:
+                    domain = domain.encode('idna').decode('ascii')
+                except UnicodeError:
+                    continue
+                url = 'mailto:%s@%s' % (local, domain)
+                nofollow_attr = ''
+
+            # Make link.
+            if url:
+                trimmed = trim_url(middle)
+                if autoescape and not safe_input:
+                    lead, trail = escape(lead), escape(trail)
+                    trimmed = escape(trimmed)
+                middle = '<a href=""%s""%s>%s</a>' % (escape(url), nofollow_attr, trimmed)
+                words[i] = mark_safe('%s%s%s' % (lead, middle, trail))
+            else:
+                if safe_input:
+                    words[i] = mark_safe(word)
+                elif autoescape:
+                    words[i] = escape(word)
+        elif safe_input:
+            words[i] = mark_safe(word)
+        elif autoescape:
+            words[i] = escape(word)
+    return ''.join(words)
+
+
+def avoid_wrapping(value):
+    """"""
+    Avoid text wrapping in the middle of a phrase by adding non-breaking
+    spaces where there previously were normal spaces.
+    """"""
+    return value.replace("" "", ""\xa0"")
+
+
+def html_safe(klass):
+    """"""
+    A decorator that defines the __html__ method. This helps non-Django
+    templates to detect classes whose __str__ methods return SafeString.
+    """"""
+    if '__html__' in klass.__dict__:
+        raise ValueError(
+            ""can't apply @html_safe to %s because it defines ""
+            ""__html__()."" % klass.__name__
+        )
+    if '__str__' not in klass.__dict__:
+        raise ValueError(
+            ""can't apply @html_safe to %s because it doesn't ""
+            ""define __str__()."" % klass.__name__
+        )
+    klass_str = klass.__str__
+    klass.__str__ = lambda self: mark_safe(klass_str(self))
+    klass.__html__ = lambda self: str(self)
+    return klass
+EOL"
+8,9,1,1183420176181077,1183420363355228,0,0.0,mv /tmp/new_html.py ./django/utils/html.py
+9,10,1,1183420363361740,1183420583002613,1,1.0,python compare_escape.py
+10,11,1,1183420583012302,1183420765694553,0,0.0,"cat > /tmp/new_html.py << 'EOL'
+""""""HTML utilities suitable for global use.""""""
+
+import json
+import re
+from html.parser import HTMLParser
+from html import escape as html_escape  # Import stdlib html.escape
+from urllib.parse import (
+    parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit,
+)
+
+from django.utils.functional import Promise, keep_lazy, keep_lazy_text
+from django.utils.http import RFC3986_GENDELIMS, RFC3986_SUBDELIMS
+from django.utils.safestring import SafeData, SafeString, mark_safe
+from django.utils.text import normalize_newlines
+
+
+@keep_lazy(str, SafeString)
+def escape(text):
+    """"""
+    Return the given text with ampersands, quotes and angle brackets encoded
+    for use in HTML.
+
+    Always escape input, even if it's already escaped and marked as such.
+    This may result in double-escaping. If this is a concern, use
+    conditional_escape() instead.
+    """"""
+    # Use Python stdlib html.escape() instead of custom translation
+    # Note: This changes ' to &#x27 instead of &#39;, but both are valid HTML
+    return mark_safe(html_escape(str(text), quote=True))
+
+
+_js_escapes = {
+    ord('\\'): '\\u005C',
+    ord(""'\""): '\\u0027',
+    ord('""'): '\\u0022',
+    ord('>'): '\\u003E',
+    ord('<'): '\\u003C',
+    ord('&'): '\\u0026',
+    ord('='): '\\u003D',
+    ord('-'): '\\u002D',
+    ord(';'): '\\u003B',
+    ord('`'): '\\u0060',
+    ord('\u2028'): '\\u2028',
+    ord('\u2029'): '\\u2029'
+}
+
+# Escape every ASCII character with a value less than 32.
+_js_escapes.update((ord('%c' % z), '\\u%04X' % z) for z in range(32))
+
+
+@keep_lazy(str, SafeString)
+def escapejs(value):
+    """"""Hex encode characters for use in JavaScript strings.""""""
+    return mark_safe(str(value).translate(_js_escapes))
+
+
+_json_script_escapes = {
+    ord('>'): '\\u003E',
+    ord('<'): '\\u003C',
+    ord('&'): '\\u0026',
+}
+
+
+def json_script(value, element_id):
+    """"""
+    Escape all the HTML/XML special characters with their unicode escapes, so
+    value is safe to be output anywhere except for inside a tag attribute. Wrap
+    the escaped JSON in a script tag.
+    """"""
+    from django.core.serializers.json import DjangoJSONEncoder
+    json_str = json.dumps(value, cls=DjangoJSONEncoder).translate(_json_script_escapes)
+    return format_html(
+        '<script id=""{}"" type=""application/json"">{}</script>',
+        element_id, mark_safe(json_str)
+    )
+
+
+def conditional_escape(text):
+    """"""
+    Similar to escape(), except that it doesn't operate on pre-escaped strings.
+
+    This function relies on the __html__ convention used both by Django's
+    SafeData class and by third-party libraries like markupsafe.
+    """"""
+    if isinstance(text, Promise):
+        text = str(text)
+    if hasattr(text, '__html__'):
+        return text.__html__()
+    else:
+        return escape(text)
+
+
+def format_html(format_string, *args, **kwargs):
+    """"""
+    Similar to str.format, but pass all arguments through conditional_escape(),
+    and call mark_safe() on the result. This function should be used instead
+    of str.format or % interpolation to build up small HTML fragments.
+    """"""
+    args_safe = map(conditional_escape, args)
+    kwargs_safe = {k: conditional_escape(v) for (k, v) in kwargs.items()}
+    return mark_safe(format_string.format(*args_safe, **kwargs_safe))
+
+
+def format_html_join(sep, format_string, args_generator):
+    """"""
+    A wrapper of format_html, for the common case of a group of arguments that
+    need to be formatted using the same format string, and then joined using
+    'sep'. 'sep' is also passed through conditional_escape.
+
+    'args_generator' should be an iterator that returns the sequence of 'args'
+    that will be passed to format_html.
+
+    Example:
+
+      format_html_join('\n', ""<li>{} {}</li>"", ((u.first_name, u.last_name)
+                                                  for u in users))
+    """"""
+    return mark_safe(conditional_escape(sep).join(
+        format_html(format_string, *args)
+        for args in args_generator
+    ))
+
+
+@keep_lazy_text
+def linebreaks(value, autoescape=False):
+    """"""Convert newlines into <p> and <br>s.""""""
+    value = normalize_newlines(value)
+    paras = re.split('\n{2,}', str(value))
+    if autoescape:
+        paras = ['<p>%s</p>' % escape(p).replace('\n', '<br>') for p in paras]
+    else:
+        paras = ['<p>%s</p>' % p.replace('\n', '<br>') for p in paras]
+    return '\n\n'.join(paras)
+
+
+class MLStripper(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self.reset()
+        self.fed = []
+
+    def handle_data(self, d):
+        self.fed.append(d)
+
+    def handle_entityref(self, name):
+        self.fed.append('&%s;' % name)
+
+    def handle_charref(self, name):
+        self.fed.append('&#%s;' % name)
+
+    def get_data(self):
+        return ''.join(self.fed)
+
+
+def strip_tags(value):
+    """"""Return the given HTML with all tags stripped.""""""
+    if hasattr(value, 'strip_tags'):
+        # The object has a strip_tags() method: let's use it
+        return value.strip_tags()
+    s = MLStripper()
+    s.feed(str(value))
+    s.close()
+    return s.get_data()
+
+
+def remove_tags(html, tags):
+    """"""Returns the given HTML with given tags removed.""""""
+    tags = [re.escape(tag) for tag in tags.split()]
+    tags_re = '(%s)' % '|'.join(tags)
+    starttag_re = re.compile(r'<%s(/?>|\s+[^>]*>)' % tags_re, re.I)
+    endtag_re = re.compile(r'<\\/%s>' % tags_re)
+    # Remove start and end tag, but not the contents.
+    html = starttag_re.sub('', html)
+    html = endtag_re.sub('', html)
+    return html
+
+
+def strip_spaces_between_tags(value):
+    """"""Return the given HTML with spaces between tags removed.""""""
+    return re.sub(r'>\s+<', '><', str(value))
+
+
+def strip_spaces_after_tabs(value):
+    """"""Takes output from strip_spaces_between_tags and removes spaces after tabs.""""""
+    return value.replace('\t ', '\t').replace('\r\n', '\n')
+
+
+def smart_urlquote(url, attrs=None):
+    """"""
+    Return a URL-encoded string.
+
+    If attrs is None, it's assumed that the url will be embedded in an HTML
+    attribute. This means '&' will be encoded as '&amp;'. Otherwise, the attrs
+    argument should be a list of attribute names on the link tag. For example
+    ['href', 'data-url'] would not escape '&' characters in the URL.
+    """"""
+    # Prepend scheme for URL without scheme
+    # This is consistent with urllib.parse.urlsplit.
+    if url.startswith('//'):
+        url = 'http:' + url
+    # We don't need to encode the url ourselves because urlsplit and urlunsplit
+    # will do it for us. We just need to use quote() in the right places.
+    url = urlsplit(url)
+    path = quote(url[2] or '')
+    url = list(url)
+    url[2] = path
+    # We want to use safe=''; this way, spaces (and any other character that
+    # would be encoded) are quoted. We also want to quote '#', which would
+    # otherwise be treated as the start of a fragment, and '&', which would
+    # otherwise be treated as the start of a query.
+    
+    # Quote both the key and the value of each query argument
+    query = '&'.join(
+        quote(key, safe='') + '=' + quote(value, safe='')
+        for key, value in parse_qsl(url[3] or '')
+    )
+    url[3] = query
+    # Return encoded URL
+    return urlunsplit(url)
+
+
+def urlize(value, trim_url_limit=None, nofollow=False, autoescape=False):
+    """"""
+    Convert URLs in plain text into clickable links.
+
+    Convert www.example.com, http://example.com and
+    username@example.com into links. Does not convert links containing
+    newlines.
+
+    If trim_url_limit is not None, truncate the displayed URL in the link to
+    trim_url_limit characters. Most users will find the display of long URLs
+    confusing and unintuitive. For example, the URL
+    ``https://example.com/dir/subdir/custom_template.html``
+    might be displayed as ``https://example.com/dir/subdir/custom_t...``.
+
+    If nofollow is True, add the rel=""nofollow"" attribute to the links.
+
+    If autoescape is True, autoescape the link text and URLs.
+    """"""
+    safe_input = isinstance(value, SafeData)
+    words = word_split_re.split(str(value))
+    for i, word in enumerate(words):
+        if '.' in word or '@' in word or ':' in word:
+            # lead: Current punctuation trimmed from the beginning of the word.
+            # middle: Current state of the word.
+            # trail: Current punctuation trimmed from the end of the word.
+            lead, middle, trail = '', word, ''
+            # Deal with punctuation.
+            lead, middle, trail = trim_punctuation(lead, middle, trail)
+
+            # Make URL we want to point to.
+            url = None
+            nofollow_attr = ' rel=""nofollow""' if nofollow else ''
+            if simple_url_re.match(middle):
+                url = smart_urlquote(unescape(middle))
+            elif simple_url_2_re.match(middle):
+                url = smart_urlquote('http://%s' % unescape(middle))
+            elif ':' not in middle and is_email_simple(middle):
+                local, domain = middle.rsplit('@', 1)
+                try:
+                    domain = domain.encode('idna').decode('ascii')
+                except UnicodeError:
+                    continue
+                url = 'mailto:%s@%s' % (local, domain)
+                nofollow_attr = ''
+
+            # Make link.
+            if url:
+                trimmed = trim_url(middle)
+                if autoescape and not safe_input:
+                    lead, trail = escape(lead), escape(trail)
+                    trimmed = escape(trimmed)
+                middle = '<a href=""%s""%s>%s</a>' % (escape(url), nofollow_attr, trimmed)
+                words[i] = mark_safe('%s%s%s' % (lead, middle, trail))
+            else:
+                if safe_input:
+                    words[i] = mark_safe(word)
+                elif autoescape:
+                    words[i] = escape(word)
+        elif safe_input:
+            words[i] = mark_safe(word)
+        elif autoescape:
+            words[i] = escape(word)
+    return ''.join(words)
+
+
+def avoid_wrapping(value):
+    """"""
+    Avoid text wrapping in the middle of a phrase by adding non-breaking
+    spaces where there previously were normal spaces.
+    """"""
+    return value.replace("" "", ""\xa0"")
+
+
+def html_safe(klass):
+    """"""
+    A decorator that defines the __html__ method. This helps non-Django
+    templates to detect classes whose __str__ methods return SafeString.
+    """"""
+    if '__html__' in klass.__dict__:
+        raise ValueError(
+            ""can't apply @html_safe to %s because it defines ""
+            ""__html__()."" % klass.__name__
+        )
+    if '__str__' not in klass.__dict__:
+        raise ValueError(
+            ""can't apply @html_safe to %s because it doesn't ""
+            ""define __str__()."" % klass.__name__
+        )
+    klass_str = klass.__str__
+    klass.__str__ = lambda self: mark_safe(klass_str(self))
+    klass.__html__ = lambda self: str(self)
+    return klass
+EOL"
+11,12,1,1183420765724760,1183420951853935,0,0.0,"cat > /tmp/new_html.py << 'EOL'
+""""""HTML utilities suitable for global use.""""""
+
+import json
+import re
+from html.parser import HTMLParser
+from html import escape as html_escape  # Import stdlib html.escape
+from urllib.parse import (
+    parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit,
+)
+
+from django.utils.functional import Promise, keep_lazy, keep_lazy_text
+from django.utils.http import RFC3986_GENDELIMS, RFC3986_SUBDELIMS
+from django.utils.safestring import SafeData, SafeString, mark_safe
+from django.utils.text import normalize_newlines
+
+
+@keep_lazy(str, SafeString)
+def escape(text):
+    """"""
+    Return the given text with ampersands, quotes and angle brackets encoded
+    for use in HTML.
+
+    Always escape input, even if it's already escaped and marked as such.
+    This may result in double-escaping. If this is a concern, use
+    conditional_escape() instead.
+    """"""
+    # Use Python stdlib html.escape() instead of custom translation
+    # Note: This changes ' to &#x27 instead of &#39;, but both are valid HTML
+    return mark_safe(html_escape(str(text), quote=True))
+
+
+_js_escapes = {
+    ord('\\'): '\\u005C',
+    ord(""'\""): '\\u0027',
+    ord('""'): '\\u0022',
+    ord('>'): '\\u003E',
+    ord('<'): '\\u003C',
+    ord('&'): '\\u0026',
+    ord('='): '\\u003D',
+    ord('-'): '\\u002D',
+    ord(';'): '\\u003B',
+    ord('`'): '\\u0060',
+    ord('\u2028'): '\\u2028',
+    ord('\u2029'): '\\u2029'
+}
+
+# Escape every ASCII character with a value less than 32.
+_js_escapes.update((ord('%c' % z), '\\u%04X' % z) for z in range(32))
+
+
+@keep_lazy(str, SafeString)
+def escapejs(value):
+    """"""Hex encode characters for use in JavaScript strings.""""""
+    return mark_safe(str(value).translate(_js_escapes))
+
+
+_json_script_escapes = {
+    ord('>'): '\\u003E',
+    ord('<'): '\\u003C',
+    ord('&'): '\\u0026',
+}
+
+
+def json_script(value, element_id):
+    """"""
+    Escape all the HTML/XML special characters with their unicode escapes, so
+    value is safe to be output anywhere except for inside a tag attribute. Wrap
+    the escaped JSON in a script tag.
+    """"""
+    from django.core.serializers.json import DjangoJSONEncoder
+    json_str = json.dumps(value, cls=DjangoJSONEncoder).translate(_json_script_escapes)
+    return format_html(
+        '<script id=""{}"" type=""application/json"">{}</script>',
+        element_id, mark_safe(json_str)
+    )
+
+
+def conditional_escape(text):
+    """"""
+    Similar to escape(), except that it doesn't operate on pre-escaped strings.
+
+    This function relies on the __html__ convention used both by Django's
+    SafeData class and by third-party libraries like markupsafe.
+    """"""
+    if isinstance(text, Promise):
+        text = str(text)
+    if hasattr(text, '__html__'):
+        return text.__html__()
+    else:
+        return escape(text)
+
+
+def format_html(format_string, *args, **kwargs):
+    """"""
+    Similar to str.format, but pass all arguments through conditional_escape(),
+    and call mark_safe() on the result. This function should be used instead
+    of str.format or % interpolation to build up small HTML fragments.
+    """"""
+    args_safe = map(conditional_escape, args)
+    kwargs_safe = {k: conditional_escape(v) for (k, v) in kwargs.items()}
+    return mark_safe(format_string.format(*args_safe, **kwargs_safe))
+
+
+def format_html_join(sep, format_string, args_generator):
+    """"""
+    A wrapper of format_html, for the common case of a group of arguments that
+    need to be formatted using the same format string, and then joined using
+    'sep'. 'sep' is also passed through conditional_escape.
+
+    'args_generator' should be an iterator that returns the sequence of 'args'
+    that will be passed to format_html.
+
+    Example:
+
+      format_html_join('\n', ""<li>{} {}</li>"", ((u.first_name, u.last_name)
+                                                  for u in users))
+    """"""
+    return mark_safe(conditional_escape(sep).join(
+        format_html(format_string, *args)
+        for args in args_generator
+    ))
+
+
+@keep_lazy_text
+def linebreaks(value, autoescape=False):
+    """"""Convert newlines into <p> and <br>s.""""""
+    value = normalize_newlines(value)
+    paras = re.split('\n{2,}', str(value))
+    if autoescape:
+        paras = ['<p>%s</p>' % escape(p).replace('\n', '<br>') for p in paras]
+    else:
+        paras = ['<p>%s</p>' % p.replace('\n', '<br>') for p in paras]
+    return '\n\n'.join(paras)
+
+
+class MLStripper(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self.reset()
+        self.fed = []
+
+    def handle_data(self, d):
+        self.fed.append(d)
+
+    def handle_entityref(self, name):
+        self.fed.append('&%s;' % name)
+
+    def handle_charref(self, name):
+        self.fed.append('&#%s;' % name)
+
+    def get_data(self):
+        return ''.join(self.fed)
+
+
+def strip_tags(value):
+    """"""Return the given HTML with all tags stripped.""""""
+    if hasattr(value, 'strip_tags'):
+        # The object has a strip_tags() method: let's use it
+        return value.strip_tags()
+    s = MLStripper()
+    s.feed(str(value))
+    s.close()
+    return s.get_data()
+
+
+def remove_tags(html, tags):
+    """"""Returns the given HTML with given tags removed.""""""
+    tags = [re.escape(tag) for tag in tags.split()]
+    tags_re = '(%s)' % '|'.join(tags)
+    starttag_re = re.compile(r'<%s(/?>|\s+[^>]*>)' % tags_re, re.I)
+    endtag_re = re.compile(r'<\\/%s>' % tags_re)
+    # Remove start and end tag, but not the contents.
+    html = starttag_re.sub('', html)
+    html = endtag_re.sub('', html)
+    return html
+
+
+def strip_spaces_between_tags(value):
+    """"""Return the given HTML with spaces between tags removed.""""""
+    return re.sub(r'>\s+<', '><', str(value))
+
+
+def strip_spaces_after_tabs(value):
+    """"""Takes output from strip_spaces_between_tags and removes spaces after tabs.""""""
+    return value.replace('\t ', '\t').replace('\r\n', '\n')
+
+
+def smart_urlquote(url, attrs=None):
+    """"""
+    Return a URL-encoded string.
+
+    If attrs is None, it's assumed that the url will be embedded in an HTML
+    attribute. This means '&' will be encoded as '&amp;'. Otherwise, the attrs
+    argument should be a list of attribute names on the link tag. For example
+    ['href', 'data-url'] would not escape '&' characters in the URL.
+    """"""
+    # Prepend scheme for URL without scheme
+    # This is consistent with urllib.parse.urlsplit.
+    if url.startswith('//'):
+        url = 'http:' + url
+    # We don't need to encode the url ourselves because urlsplit and urlunsplit
+    # will do it for us. We just need to use quote() in the right places.
+    url = urlsplit(url)
+    path = quote(url[2] or '')
+    url = list(url)
+    url[2] = path
+    # We want to use safe=''; this way, spaces (and any other character that
+    # would be encoded) are quoted. We also want to quote '#', which would
+    # otherwise be treated as the start of a fragment, and '&', which would
+    # otherwise be treated as the start of a query.
+    
+    # Quote both the key and the value of each query argument
+    query = '&'.join(
+        quote(key, safe='') + '=' + quote(value, safe='')
+        for key, value in parse_qsl(url[3] or '')
+    )
+    url[3] = query
+    # Return encoded URL
+    return urlunsplit(url)
+
+
+def urlize(value, trim_url_limit=None, nofollow=False, autoescape=False):
+    """"""
+    Convert URLs in plain text into clickable links.
+
+    Convert www.example.com, http://example.com and
+    username@example.com into links. Does not convert links containing
+    newlines.
+
+    If trim_url_limit is not None, truncate the displayed URL in the link to
+    trim_url_limit characters. Most users will find the display of long URLs
+    confusing and unintuitive. For example, the URL
+    ``https://example.com/dir/subdir/custom_template.html``
+    might be displayed as ``https://example.com/dir/subdir/custom_t...``.
+
+    If nofollow is True, add the rel=""nofollow"" attribute to the links.
+
+    If autoescape is True, autoescape the link text and URLs.
+    """"""
+    safe_input = isinstance(value, SafeData)
+    words = word_split_re.split(str(value))
+    for i, word in enumerate(words):
+        if '.' in word or '@' in word or ':' in word:
+            # lead: Current punctuation trimmed from the beginning of the word.
+            # middle: Current state of the word.
+            # trail: Current punctuation trimmed from the end of the word.
+            lead, middle, trail = '', word, ''
+            # Deal with punctuation.
+            lead, middle, trail = trim_punctuation(lead, middle, trail)
+
+            # Make URL we want to point to.
+            url = None
+            nofollow_attr = ' rel=""nofollow""' if nofollow else ''
+            if simple_url_re.match(middle):
+                url = smart_urlquote(unescape(middle))
+            elif simple_url_2_re.match(middle):
+                url = smart_urlquote('http://%s' % unescape(middle))
+            elif ':' not in middle and is_email_simple(middle):
+                local, domain = middle.rsplit('@', 1)
+                try:
+                    domain = domain.encode('idna').decode('ascii')
+                except UnicodeError:
+                    continue
+                url = 'mailto:%s@%s' % (local, domain)
+                nofollow_attr = ''
+
+            # Make link.
+            if url:
+                trimmed = trim_url(middle)
+                if autoescape and not safe_input:
+                    lead, trail = escape(lead), escape(trail)
+                    trimmed = escape(trimmed)
+                middle = '<a href=""%s""%s>%s</a>' % (escape(url), nofollow_attr, trimmed)
+                words[i] = mark_safe('%s%s%s' % (lead, middle, trail))
+            else:
+                if safe_input:
+                    words[i] = mark_safe(word)
+                elif autoescape:
+                    words[i] = escape(word)
+        elif safe_input:
+            words[i] = mark_safe(word)
+        elif autoescape:
+            words[i] = escape(word)
+    return ''.join(words)
+
+
+def avoid_wrapping(value):
+    """"""
+    Avoid text wrapping in the middle of a phrase by adding non-breaking
+    spaces where there previously were normal spaces.
+    """"""
+    return value.replace("" "", ""\xa0"")
+
+
+def html_safe(klass):
+    """"""
+    A decorator that defines the __html__ method. This helps non-Django
+    templates to detect classes whose __str__ methods return SafeString.
+    """"""
+    if '__html__' in klass.__dict__:
+        raise ValueError(
+            ""can't apply @html_safe to %s because it defines ""
+            ""__html__()."" % klass.__name__
+        )
+    if '__str__' not in klass.__dict__:
+        raise ValueError(
+            ""can't apply @html_safe to %s because it doesn't ""
+            ""define __str__()."" % klass.__name__
+        )
+    klass_str = klass.__str__
+    klass.__str__ = lambda self: mark_safe(klass_str(self))
+    klass.__html__ = lambda self: str(self)
+    return klass
+EOL"
+12,13,1,1183420951857001,1183421129967102,0,0.0,"grep -A 10 ""_js_escapes = {"" /tmp/new_html.py"
+13,14,1,1183421129973935,1183421322518150,0,0.0,"cp ./django/utils/html.py /tmp/backup_html.py && sed -i ""s/^_html_escapes =.*$/# Removed _html_escapes dictionary as it's no longer used/"" /tmp/backup_html.py && sed -i ""s/^def escape(text):$/from html import escape as html_escape_builtin\n\ndef escape(text):/"" /tmp/backup_html.py && sed -i ""s/return mark_safe(str(text).translate(_html_escapes))/return mark_safe(html_escape_builtin(str(text), quote=True))/"" /tmp/backup_html.py && mv /tmp/backup_html.py ./django/utils/html.py"
+14,15,1,1183421322523329,1183421539540803,1,1.0,python compare_escape.py
+15,16,1,1183421539549068,1183421722340885,0,0.0,"grep -A 5 ""from html import"" ./django/utils/html.py"
+16,17,1,1183421722363768,1183421908565463,0,0.0,cp ./django/utils/html.py /tmp/clean_html.py && sed -i '/from html import escape as html_escape.*stdlib html.escape/d' /tmp/clean_html.py && mv /tmp/clean_html.py ./django/utils/html.py
+17,18,1,1183421908573488,1183422088513199,0,0.0,"grep -A 5 ""from html import"" ./django/utils/html.py"
+18,19,1,1183422088519571,1183422309354501,1,1.0,python compare_escape.py
+19,20,1,1183422309369930,1183422498071016,2,2.0,"cp ./django/utils/html.py /tmp/final_html.py && echo ""from html import escape as html_escape_builtin"" | cat - /tmp/final_html.py > /tmp/temp_html.py && mv /tmp/temp_html.py /tmp/final_html.py && sed -i '/^_html_escapes = {/,/^}\s*$/d' /tmp/final_html.py && sed -i '/def escape(text):/,/return mark_safe(str(text).translate(_html_escapes))/c\
+def escape(text):\n    """"""\n    Return the given text with ampersands, quotes and angle brackets encoded\n    for use in HTML.\n\n    Always escape input, even if it\'s already escaped and marked as such.\n    This may result in double-escaping. If this is a concern, use\n    conditional_escape() instead.\n    """"""\n    # Use Python stdlib html.escape() instead of custom translation\n    # Note: This changes '\'' to &#x27 instead of &#39;, but both are valid HTML\n    return mark_safe(html_escape_builtin(str(text), quote=True))' /tmp/final_html.py && mv /tmp/final_html.py ./django/utils/html.py"
+20,21,1,1183422498081967,1183422684034051,0,0.0,"cat > /tmp/new_html.py << 'EOL'
+# First, get the original file content
+$(cat ./django/utils/html.py | grep -v ""^_html_escapes = {"" | grep -v ""^}\s*$"" | sed '/def escape(text):/i \\nfrom html import escape as html_escape_builtin\n' | sed '/def escape(text):/,/return mark_safe(str(text).translate(_html_escapes))/c \\ndef escape(text):\\n    """"""\\n    Return the given text with ampersands, quotes and angle brackets encoded\\n    for use in HTML.\\n\\n    Always escape input, even if it\'s already escaped and marked as such.\\n    This may result in double-escaping. If this is a concern, use\\n    conditional_escape() instead.\\n    """"""\\n    # Use Python stdlib html.escape() instead of custom translation\\n    # Note: This changes '\'' to &#x27 instead of &#39;, but both are valid HTML\\n    return mark_safe(html_escape_builtin(str(text), quote=True))')
+EOL"
+21,22,1,1183422684044671,1183422866561103,0,0.0,"cat > modify_html.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the original file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the _html_escapes dictionary and remove it
+new_lines = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+    if line.strip().startswith('_html_escapes = {'):
+        # Skip all lines of the dictionary
+        while i < len(lines) and not lines[i].strip().endswith('}'):n            i += 1
+        i += 1  # Skip the closing bracket too
+    else:
+        new_lines.append(line)
+        i += 1
+
+# Add the import after the other imports
+import_added = False
+final_lines = []
+for line in new_lines:
+    final_lines.append(line)
+    if not import_added and line.startswith('from html.parser import'):
+        final_lines.append('from html import escape as html_escape_builtin\n')
+        import_added = True
+
+# Replace the escape function
+for i, line in enumerate(final_lines):
+    if line.strip().startswith('def escape(text):'):
+        # Replace the function implementation
+        indent = ' ' * (len(line) - len(line.lstrip()))
+        replacement = [
+            line,
+            '    """"""\n',
+            '    Return the given text with ampersands, quotes and angle brackets encoded\n',
+            '    for use in HTML.\n',
+            '    \n',
+            '    Always escape input, even if it\'s already escaped and marked as such.\n',
+            '    This may result in double-escaping. If this is a concern, use\n',
+            '    conditional_escape() instead.\n',
+            '    """"""\n',
+            '    # Use Python stdlib html.escape() instead of custom translation\n',
+            '    # Note: This changes '\'' to &#x27 instead of &#39;, but both are valid HTML\n',
+            '    return mark_safe(html_escape_builtin(str(text), quote=True))\n'
+        ]
+        
+        # Find the end of the function
+        j = i + 1
+        while j < len(final_lines) and (j < i + 20) and (final_lines[j].startswith(' ') or final_lines[j].startswith('\t')):
+            j += 1
+            
+        # Replace the function
+        final_lines[i:j] = replacement
+        break
+
+# Write the modified file
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(final_lines)
+
+print(""Successfully modified django/utils/html.py"")
+EOL"
+22,23,1,1183422866584005,1183423062471487,1,1.0,python modify_html.py
+23,24,1,1183423062483008,1183423243273949,0,0.0,"cat > modify_html.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the original file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the _html_escapes dictionary and remove it
+new_lines = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+    if line.strip().startswith('_html_escapes = {'):
+        # Skip all lines of the dictionary
+        while i < len(lines) and not lines[i].strip().endswith('}'):
+            i += 1
+        i += 1  # Skip the closing bracket too
+    else:
+        new_lines.append(line)
+        i += 1
+
+# Add the import after the other imports
+import_added = False
+final_lines = []
+for line in new_lines:
+    final_lines.append(line)
+    if not import_added and line.startswith('from html.parser import'):
+        final_lines.append('from html import escape as html_escape_builtin\n')
+        import_added = True
+
+# Replace the escape function
+for i, line in enumerate(final_lines):
+    if line.strip().startswith('def escape(text):'):
+        # Replace the function implementation
+        indent = ' ' * (len(line) - len(line.lstrip()))
+        replacement = [
+            line,
+            '    """"""\n',
+            '    Return the given text with ampersands, quotes and angle brackets encoded\n',
+            '    for use in HTML.\n',
+            '    \n',
+            '    Always escape input, even if it\'s already escaped and marked as such.\n',
+            '    This may result in double-escaping. If this is a concern, use\n',
+            '    conditional_escape() instead.\n',
+            '    """"""\n',
+            '    # Use Python stdlib html.escape() instead of custom translation\n',
+            '    # Note: This changes '\'' to &#x27 instead of &#39;, but both are valid HTML\n',
+            '    return mark_safe(html_escape_builtin(str(text), quote=True))\n'
+        ]
+        
+        # Find the end of the function
+        j = i + 1
+        while j < len(final_lines) and (j < i + 20) and (final_lines[j].startswith(' ') or final_lines[j].startswith('\t')):
+            j += 1
+            
+        # Replace the function
+        final_lines[i:j] = replacement
+        break
+
+# Write the modified file
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(final_lines)
+
+print(""Successfully modified django/utils/html.py"")
+EOL"
+24,25,1,1183423243288246,1183423434500864,1,1.0,python modify_html.py
+25,26,1,1183423434530479,1183423618718045,0,0.0,"cat > modify_html.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the original file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the _html_escapes dictionary and remove it
+new_lines = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+    if line.strip().startswith('_html_escapes = {'):
+        # Skip all lines of the dictionary
+        while i < len(lines) and not lines[i].strip().endswith('}'):
+            i += 1
+        i += 1  # Skip the closing bracket too
+    else:
+        new_lines.append(line)
+        i += 1
+
+# Add the import after the other imports
+import_added = False
+final_lines = []
+for line in new_lines:
+    final_lines.append(line)
+    if not import_added and line.startswith('from html.parser import'):
+        final_lines.append('from html import escape as html_escape_builtin\n')
+        import_added = True
+
+# Replace the escape function
+for i, line in enumerate(final_lines):
+    if line.strip().startswith('def escape(text):'):
+        # Create the replacement lines
+        replacement = [
+            'def escape(text):\n',
+            '    """"""\n',
+            '    Return the given text with ampersands, quotes and angle brackets encoded\n',
+            '    for use in HTML.\n',
+            '    \n',
+            '    Always escape input, even if it\'s already escaped and marked as such.\n',
+            '    This may result in double-escaping. If this is a concern, use\n',
+            '    conditional_escape() instead.\n',
+            '    """"""\n',
+            '    # Use Python stdlib html.escape() instead of custom translation\n',
+            '    # Note: This changes '\'' to &#x27 instead of &#39;, but both are valid HTML\n',
+            '    return mark_safe(html_escape_builtin(str(text), quote=True))\n'
+        ]
+        
+        # Find the end of the function
+        j = i + 1
+        while j < len(final_lines) and j < i + 20:
+            if j >= len(final_lines):
+                break
+            if not (final_lines[j].startswith(' ') or final_lines[j].startswith('\t')) and final_lines[j].strip() != '':
+                break
+            j += 1
+        
+        # Replace the function
+        final_lines[i:j] = replacement
+        break
+
+# Write the modified file
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(final_lines)
+
+print(""Successfully modified django/utils/html.py"")
+EOL"
+26,27,1,1183423618733224,1183423797558725,0,0.0,"cat > create_replacement.py << 'EOL'
+#!/usr/bin/env python3
+
+# Create a clean replacement for the escape function
+replacement = '''def escape(text):
+    """"""
+    Return the given text with ampersands, quotes and angle brackets encoded
+    for use in HTML.
+
+    Always escape input, even if it\'s already escaped and marked as such.
+    This may result in double-escaping. If this is a concern, use
+    conditional_escape() instead.
+    """"""
+    # Use Python stdlib html.escape() instead of custom translation
+    # Note: This changes '\'' to &#x27 instead of &#39;, but both are valid HTML
+    return mark_safe(html_escape_builtin(str(text), quote=True))
+'''
+
+with open('/tmp/escape_replacement.py', 'w') as f:
+    f.write(replacement)
+
+print(""Created replacement file"")
+EOL"
+27,28,1,1183423797568062,1183423989168042,0,0.0,python create_replacement.py
+28,29,1,1183423989181807,1183424167758012,0,0.0,"cat > apply_changes.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the original file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Remove _html_escapes dictionary
+new_lines = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+    if line.strip().startswith('_html_escapes = {'):
+        # Skip the dictionary
+        while i < len(lines) and not lines[i].strip().endswith('}'):n            i += 1
+        i += 1  # Skip the closing bracket
+    else:
+        new_lines.append(line)
+        i += 1
+
+# Add the import
+import_added = False
+final_lines = []
+for line in new_lines:
+    final_lines.append(line)
+    if not import_added and line.startswith('from html.parser import'):
+        final_lines.append('from html import escape as html_escape_builtin\n')
+        import_added = True
+
+# Read the replacement function
+with open('/tmp/escape_replacement.py', 'r') as f:
+    replacement_lines = f.readlines()
+
+# Find and replace the escape function
+for i, line in enumerate(final_lines):
+    if line.strip().startswith('def escape(text):'):
+        # Find the end of the function
+        j = i + 1
+        while j < len(final_lines) and j < i + 20:
+            if j >= len(final_lines):
+                break
+            if not (final_lines[j].startswith(' ') or final_lines[j].startswith('\t')) and final_lines[j].strip() != '':
+                break
+            j += 1
+        
+        # Replace the function
+        final_lines[i:j] = replacement_lines
+        break
+
+# Write the modified file
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(final_lines)
+
+print(""Successfully modified django/utils/html.py"")
+EOL"
+29,30,1,1183424167764965,1183424353168372,0,0.0,"cat > apply_changes.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the original file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Remove _html_escapes dictionary
+new_lines = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+    if line.strip().startswith('_html_escapes = {'):
+        # Skip the dictionary
+        while i < len(lines) and not lines[i].strip().endswith('}'):
+            i += 1
+        i += 1  # Skip the closing bracket
+    else:
+        new_lines.append(line)
+        i += 1
+
+# Add the import
+import_added = False
+final_lines = []
+for line in new_lines:
+    final_lines.append(line)
+    if not import_added and line.startswith('from html.parser import'):
+        final_lines.append('from html import escape as html_escape_builtin\n')
+        import_added = True
+
+# Read the replacement function
+with open('/tmp/escape_replacement.py', 'r') as f:
+    replacement_lines = f.readlines()
+
+# Find and replace the escape function
+for i, line in enumerate(final_lines):
+    if line.strip().startswith('def escape(text):'):
+        # Find the end of the function
+        j = i + 1
+        while j < len(final_lines) and j < i + 20:
+            if j >= len(final_lines):
+                break
+            if not (final_lines[j].startswith(' ') or final_lines[j].startswith('\t')) and final_lines[j].strip() != '':
+                break
+            j += 1
+        
+        # Replace the function
+        final_lines[i:j] = replacement_lines
+        break
+
+# Write the modified file
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(final_lines)
+
+print(""Successfully modified django/utils/html.py"")
+EOL"
+30,31,1,1183424353188198,1183424550856709,0,0.0,python apply_changes.py
+31,32,1,1183424550873400,1183424733989620,0,0.0,"grep -A 15 ""def escape(text):"" ./django/utils/html.py"
+32,33,1,1183424733997766,1183424916711587,0,0.0,"grep ""from html import escape as html_escape_builtin"" ./django/utils/html.py"
+33,34,1,1183424916805242,1183425101422567,0,0.0,"cat > fix_duplicate_import.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Remove duplicate import
+seen_import = False
+new_lines = []
+for line in lines:
+    if 'from html import escape as html_escape_builtin' in line:
+        if not seen_import:
+            new_lines.append(line)
+            seen_import = True
+        # Skip duplicate
+    else:
+        new_lines.append(line)
+
+# Write the file back
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(new_lines)
+
+print(""Removed duplicate import"")
+EOL"
+34,35,1,1183425101452553,1183425295016408,0,0.0,python fix_duplicate_import.py
+35,36,1,1183425295045122,1183425480589663,0,0.0,"grep ""from html import escape as html_escape_builtin"" ./django/utils/html.py && echo ""---"" && grep -A 15 ""def escape(text):"" ./django/utils/html.py"
+36,37,1,1183425480613488,1183425695991436,1,1.0,python compare_escape.py
+37,38,1,1183425696053302,1183425875159308,0,0.0,"cat > fix_js_escapes.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Fix the _js_escapes dictionary
+new_lines = []
+for line in lines:
+    if ""ord(\""'\\"")"" in line:
+        # Fix the problematic line
+        new_lines.append(""    ord('\\\\'): '\\\\u005C',\n"")
+        new_lines.append(""    ord(\""'\""): '\\\\u0027',\n"")
+        new_lines.append(""    ord('\""'): '\\\\u0022',\n"")
+    elif ""ord('\\\\'): '\\\\u005C',"" in line or ""ord(\""'\""): '\\\\u0027',"" in line or ""ord('\""'): '\\\\u0022',"" in line:
+        # Skip these lines as they'll be added above
+        continue
+    else:
+        new_lines.append(line)
+
+# Write the file back
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(new_lines)
+
+print(""Fixed _js_escapes dictionary"")
+EOL"
+38,39,1,1183425875189585,1183426059632714,0,0.0,"cat > fix_js_escapes.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Fix the _js_escapes dictionary
+new_lines = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+    if ""_js_escapes = {"" in line:
+        # Keep the opening line
+        new_lines.append(line)
+        i += 1
+        # Skip to the line with the problematic entries
+        while i < len(lines) and ""ord('\\\\')"" not in lines[i]:
+            if ""}"" in lines[i]:  # If we reach the end before finding the entries
+                new_lines.append(lines[i])
+                i += 1
+                break
+            i += 1
+        # Add the corrected entries
+        new_lines.append(""    ord('\\\\'): '\\\\u005C',\n"")
+        new_lines.append(""    ord(\""'\""): '\\\\u0027',\n"")
+        new_lines.append(""    ord('\""'): '\\\\u0022',\n"")
+        # Skip the rest until after the original entries
+        while i < len(lines) and (""ord('\\\\')"" in lines[i] or ""ord(\""'\""):"" in lines[i] or ""ord('\""')"" in lines[i]):
+            i += 1
+    else:
+        new_lines.append(line)
+        i += 1
+
+# Write the file back
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(new_lines)
+
+print(""Fixed _js_escapes dictionary"")
+EOL"
+39,40,1,1183426059637853,1183426255408862,0,0.0,python fix_js_escapes.py
+40,41,1,1183426255423148,1183426442157107,0,0.0,"grep -A 5 ""_js_escapes = {"" ./django/utils/html.py"
+41,42,1,1183426442164791,1183426626366588,0,0.0,"cat > fix_js_escapes.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Create a new list for the fixed lines
+new_lines = []
+i = 0
+
+# State variables
+in_js_escapes = False
+seen_js_entries = False
+
+while i < len(lines):
+    line = lines[i]
+    
+    if ""_js_escapes = {"" in line:
+        new_lines.append(line)
+        in_js_escapes = True
+        seen_js_entries = False
+        i += 1
+        continue
+    
+    if in_js_escapes and ""}"" in line and not seen_js_entries:
+        # We reached the end of the dictionary without seeing the entries
+        # Add the correct entries before the closing bracket
+        new_lines.append(""    ord('\\\\'): '\\\\u005C',\n"")
+        new_lines.append(""    ord(\""'\""): '\\\\u0027',\n"")
+        new_lines.append(""    ord('\""'): '\\\\u0022',\n"")
+        new_lines.append(""    ord('>'): '\\\\u003E',\n"")
+        new_lines.append(""    ord('<'): '\\\\u003C',\n"")
+        new_lines.append(""    ord('&'): '\\\\u0026',\n"")
+        new_lines.append(""    ord('='): '\\\\u003D',\n"")
+        new_lines.append(""    ord('-'): '\\\\u002D',\n"")
+        new_lines.append(""    ord(';'): '\\\\u003B',\n"")
+        new_lines.append(""    ord('`'): '\\\\u0060',\n"")
+        new_lines.append(""    ord('\\u2028'): '\\\\u2028',\n"")
+        new_lines.append(""    ord('\\u2029'): '\\\\u2029',\n"")
+        new_lines.append(line)  # The closing bracket
+        in_js_escapes = False
+        i += 1
+        continue
+    
+    if in_js_escapes and (""ord('\\\\')"" in line or ""ord(\""'\""):"" in line or ""ord('\""')"" in line):
+        # Skip the old entries
+        if ""}"" in line:
+            # If we encounter the closing bracket here, we need to add our entries
+            new_lines.append(""    ord('\\\\'): '\\\\u005C',\n"")
+            new_lines.append(""    ord(\""'\""): '\\\\u0027',\n"")
+            new_lines.append(""    ord('\""'): '\\\\u0022',\n"")
+            new_lines.append(""    ord('>'): '\\\\u003E',\n"")
+            new_lines.append(""    ord('<'): '\\\\u003C',\n"")
+            new_lines.append(""    ord('&'): '\\\\u0026',\n"")
+            new_lines.append(""    ord('='): '\\\\u003D',\n"")
+            new_lines.append(""    ord('-'): '\\\\u002D',\n"")
+            new_lines.append(""    ord(';'): '\\\\u003B',\n"")
+            new_lines.append(""    ord('`'): '\\\\u0060',\n"")
+            new_lines.append(""    ord('\\u2028'): '\\\\u2028',\n"")
+            new_lines.append(""    ord('\\u2029'): '\\\\u0029',\n"")
+            new_lines.append(line)
+            in_js_escapes = False
+        seen_js_entries = True
+        i += 1
+        continue
+    
+    if not in_js_escapes or (in_js_escapes and not seen_js_entries and ""}"" not in line):
+        new_lines.append(line)
+    
+    i += 1
+
+# Write the file back
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(new_lines)
+
+print(""Fixed _js_escapes dictionary"")
+EOL"
+42,43,1,1183426626383019,1183426815648166,0,0.0,"grep -A 15 ""_js_escapes = {"" ./django/utils/html.py | grep -v ""^---$"" > /tmp/js_escapes.txt && head -n 1 /tmp/js_escapes.txt && tail -n +2 /tmp/js_escapes.txt | grep -v ""ord('\\\\')"" | grep -v ""ord(\""'\""):"" | grep -v ""ord('\""')"" > /tmp/clean_js_escapes.txt && cat /tmp/js_escapes.txt | head -n 1 > /tmp/final_js_escapes.txt && cat /tmp/clean_js_escapes.txt >> /tmp/final_js_escapes.txt"
+43,44,1,1183426815678052,1183426997479735,0,0.0,"cat > replace_js_escapes.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Read the cleaned _js_escapes dictionary
+with open('/tmp/final_js_escapes.txt', 'r') as f:
+    js_lines = f.readlines()
+
+# Find and replace the _js_escapes dictionary
+new_lines = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    
+    if ""_js_escapes = {"" in line:
+        # Add our cleaned version
+        new_lines.extend(js_lines)
+        # Skip the original dictionary
+        i += 1
+        while i < len(lines) and not lines[i].strip().endswith('}'):n            i += 1
+        i += 1  # Skip the closing bracket
+    else:
+        new_lines.append(line)
+        i += 1
+
+# Write the file back
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(new_lines)
+
+print(""Replaced _js_escapes dictionary"")
+EOL"
+44,45,1,1183426997486207,1183427178383107,0,0.0,"cat > replace_js_escapes.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Read the cleaned _js_escapes dictionary
+with open('/tmp/final_js_escapes.txt', 'r') as f:
+    js_lines = f.readlines()
+
+# Find and replace the _js_escapes dictionary
+new_lines = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    
+    if ""_js_escapes = {"" in line:
+        # Add our cleaned version
+        new_lines.extend(js_lines)
+        # Skip the original dictionary
+        i += 1
+        while i < len(lines) and not lines[i].strip().endswith('}'):
+            i += 1
+        i += 1  # Skip the closing bracket
+    else:
+        new_lines.append(line)
+        i += 1
+
+# Write the file back
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(new_lines)
+
+print(""Replaced _js_escapes dictionary"")
+EOL"
+45,46,1,1183427178394589,1183427374127585,0,0.0,python replace_js_escapes.py
+46,47,1,1183427374137213,1183427556337944,0,0.0,"grep -A 15 ""_js_escapes = {"" ./django/utils/html.py"
+47,48,1,1183427556346751,1183427776597091,1,1.0,python compare_escape.py
+48,49,1,1183427776622498,1183427960512887,0,0.0,"cat > fix_specific_line.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Fix the specific line with ord(""'\""): '\\u0027',
+new_lines = []
+for line in lines:
+    if ""ord(\""'\\""): '\\u0027',"" in line:
+        new_lines.append(""    ord(\""'\""): '\\u0027',\n"")
+    else:
+        new_lines.append(line)
+
+# Write the file back
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(new_lines)
+
+print(""Fixed specific line"")
+EOL"
+49,50,1,1183427960520702,1183428162726097,1,1.0,python fix_specific_line.py
+50,51,1,1183428162746044,1183428346027097,0,0.0,"sed -i ""s/ord(\\\""'\\\\\\\\): '\\\\\\u0027',/ord(\""'\\\\): '\\\\u0027',/"" ./django/utils/html.py"
+51,52,1,1183428346033329,1183428529296879,0,0.0,"grep -A 2 ""_js_escapes = {"" ./django/utils/html.py"
+52,53,1,1183428529299965,1183428747794748,1,1.0,python compare_escape.py
+53,54,1,1183428747827209,1183428927594874,0,0.0,"cat ./django/utils/html.py | grep -n ""ord("""
+54,55,1,1183428927621304,1183429109148794,2,2.0,"sed -i '33s/.*/    ord(""\'""): ""\\u0027"",/' ./django/utils/html.py"
+55,56,1,1183429109152581,1183429290211840,0,0.0,"cat > /tmp/fixed_js_escapes.py << 'EOL'
+_js_escapes = {
+    ord('\\'): '\\u005C',
+    ord(""'\""): '\\u0027',
+    ord('""'): '\\u0022',
+    ord('>'): '\\u003E',
+    ord('<'): '\\u003C',
+    ord('&'): '\\u0026',
+    ord('='): '\\u003D',
+    ord('-'): '\\u002D',
+    ord(';'): '\\u003B',
+    ord('`'): '\\u0060',
+    ord('\u2028'): '\\u2028',
+    ord('\u2029'): '\\u2029'
+}
+EOL"
+56,57,1,1183429290232649,1183429472152148,1,1.0,"sed -i '/_js_escapes = {/,/}/ {/_js_escapes = {/! {/_js_escapes.update/! d}}}' ./django/utils/html.py && sed -i '/_js_escapes = {/r /tmp/fixed_js_escapes.py' ./django/utils/html.py"
+57,58,1,1183429472159902,1183429656705082,0,0.0,"cat > final_fix.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the entire file
+with open('./django/utils/html.py', 'r') as f:
+    content = f.read()
+
+# Define the correct _js_escapes dictionary
+js_escapes_correct = '''_js_escapes = {
+    ord('\\\\'): '\\\\u005C',
+    ord(\""'\\\\): '\\\\u0027',
+    ord('\""'): '\\\\u0022',
+    ord('>'): '\\\\u003E',
+    ord('<'): '\\\\u003C',
+    ord('&'): '\\\\u0026',
+    ord('='): '\\\\u003D',
+    ord('-'): '\\\\u002D',
+    ord(';'): '\\\\u003B',
+    ord('`'): '\\\\u0060',
+    ord('\\u2028'): '\\\\u2028',
+    ord('\\u2029'): '\\\\u2029'
+}'''
+
+# Replace the _js_escapes section
+import re
+content = re.sub(r'_js_escapes = \{[^}]*\}', js_escapes_correct, content, count=1)
+
+# Write the file back
+with open('./django/utils/html.py', 'w') as f:
+    f.write(content)
+
+print(""Final fix applied"")
+EOL"
+58,59,1,1183429656734397,1183429867133263,0,0.0,python final_fix.py
+59,60,1,1183429867155885,1183430056959048,0,0.0,"grep -A 15 ""_js_escapes = {"" ./django/utils/html.py"
+60,61,1,1183430056963006,1183430245097733,0,0.0,"cat > create_final_version.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the original file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the start and end of the _js_escapes dictionary
+js_start = -1
+js_end = -1
+for i, line in enumerate(lines):
+    if '_js_escapes = {' in line:
+        js_start = i
+    elif js_start != -1 and '}' in line and js_end == -1:
+        js_end = i
+        break
+
+# Create the fixed _js_escapes content
+fixed_js = [
+    '_js_escapes = {
+',
+    ""    ord('\\\\'): '\\\\\\u005C',\n"",
+    ""    ord(\\""'\\\\): '\\\\\\u0027',\n"",
+    ""    ord('\\\""'): '\\\\\\u0022',\n"",
+    ""    ord('>'): '\\\\\\u003E',\n"",
+    ""    ord('<'): '\\\\\\u003C',\n"",
+    ""    ord('&'): '\\\\\\u0026',\n"",
+    ""    ord('='): '\\\\\\u003D',\n"",
+    ""    ord('-'): '\\\\\\u002D',\n"",
+    ""    ord(';'): '\\\\\\u003B',\n"",
+    ""    ord('`'): '\\\\\\u0060',\n"",
+    ""    ord('\\\\u2028'): '\\\\\\u2028',\n"",
+    ""    ord('\\\\u2029'): '\\\\\\u2029'\n"",
+    '}
+'
+]
+
+# Construct the new file content
+new_lines = []
+for i, line in enumerate(lines):
+    if i == js_start:
+        new_lines.extend(fixed_js)
+    elif js_start < i <= js_end:
+        continue
+    else:
+        new_lines.append(line)
+
+# Write the new file
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(new_lines)
+
+print(""Created final version"")
+EOL"
+61,62,1,1183430245101190,1183430441482236,1,1.0,python create_final_version.py
+62,63,1,1183430441505971,1183430626007406,1,1.0,"cp ./django/utils/html.py /tmp/original.py && grep -n ""_html_escapes"" /tmp/original.py"
+63,64,1,1183430626033204,1183430805589601,0,0.0,"grep -n ""_js_escapes"" ./django/utils/html.py"
+64,65,1,1183430805596614,1183430987295171,0,0.0,"cat > /tmp/fixed_js.py << 'EOL'
+_js_escapes = {
+    ord('\\'): '\\u005C',
+    ord(""'\""): '\\u0027',
+    ord('""'): '\\u0022',
+    ord('>'): '\\u003E',
+    ord('<'): '\\u003C',
+    ord('&'): '\\u0026',
+    ord('='): '\\u003D',
+    ord('-'): '\\u002D',
+    ord(';'): '\\u003B',
+    ord('`'): '\\u0060',
+    ord('\u2028'): '\\u2028',
+    ord('\u2029'): '\\u2029'
+}
+EOL"
+65,66,1,1183430987312253,1183431167652377,2,2.0,"sed -i '/_js_escapes = {/,/}/c\\n_js_escapes = {\n    ord(\""'\\\\): '\\u0027',\n    ord('\\\""'): '\\u0022',\n    ord('>') : '\\u003E',\n    ord('<') : '\\u003C',\n    ord('&') : '\\u0026',\n    ord('=') : '\\u003D',\n    ord('-') : '\\u002D',\n    ord(';') : '\\u003B',\n    ord('`') : '\\u0060',\n    ord('\\u2028') : '\\u2028',\n    ord('\\u2029') : '\\u2029'\n}' ./django/utils/html.py"
+66,67,1,1183431167678166,1183431346874548,0,0.0,"cat > use_fixed_js.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the fixed js_escapes from file
+with open('/tmp/fixed_js.py', 'r') as f:
+    fixed_js = f.read().splitlines(keepends=True)
+
+# Read the original file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the _js_escapes section
+js_start = -1
+js_end = -1
+for i, line in enumerate(lines):
+    if '_js_escapes = {' in line:
+        js_start = i
+    elif js_start != -1 and '}' in line and js_end == -1:
+        js_end = i
+        break
+
+# Replace the section
+new_lines = []
+for i, line in enumerate(lines):
+    if i == js_start:
+        new_lines.extend(fixed_js)
+    elif js_start < i <= js_end:
+        continue
+    else:
+        new_lines.append(line)
+
+# Write the file back
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(new_lines)
+
+print(""Successfully applied fixed _js_escapes"")
+EOL"
+67,68,1,1183431346877965,1183431540923313,0,0.0,python use_fixed_js.py
+68,69,1,1183431540934905,1183431731835170,0,0.0,"grep -A 15 ""_js_escapes = {"" ./django/utils/html.py"
+69,70,1,1183431731848065,1183431959136729,1,1.0,python compare_escape.py
+70,71,1,1183431959231956,1183432149012936,0,0.0,"cat > /tmp/corrected_html.py << 'EOL'
+""""""HTML utilities suitable for global use.""""""
+
+import json
+import re
+from html.parser import HTMLParser
+from html import escape as html_escape_builtin
+from urllib.parse import (
+    parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit,
+)
+
+from django.utils.functional import Promise, keep_lazy, keep_lazy_text
+from django.utils.http import RFC3986_GENDELIMS, RFC3986_SUBDELIMS
+from django.utils.safestring import SafeData, SafeString, mark_safe
+from django.utils.text import normalize_newlines
+
+
+@keep_lazy(str, SafeString)
+def escape(text):
+    """"""
+    Return the given text with ampersands, quotes and angle brackets encoded
+    for use in HTML.
+
+    Always escape input, even if it's already escaped and marked as such.
+    This may result in double-escaping. If this is a concern, use
+    conditional_escape() instead.
+    """"""
+    # Use Python stdlib html.escape() instead of custom translation
+    # Note: This changes ' to &#x27 instead of &#39;, but both are valid HTML
+    return mark_safe(html_escape_builtin(str(text), quote=True))
+
+
+_js_escapes = {
+    ord('\\'): '\\u005C',
+    ord(""'\""): '\\u0027',
+    ord('""'): '\\u0022',
+    ord('>'): '\\u003E',
+    ord('<'): '\\u003C',
+    ord('&'): '\\u0026',
+    ord('='): '\\u003D',
+    ord('-'): '\\u002D',
+    ord(';'): '\\u003B',
+    ord('`'): '\\u0060',
+    ord('\u2028'): '\\u2028',
+    ord('\u2029'): '\\u2029'
+}
+
+# Escape every ASCII character with a value less than 32.
+_js_escapes.update((ord('%c' % z), '\\u%04X' % z) for z in range(32))
+
+
+@keep_lazy(str, SafeString)
+def escapejs(value):
+    """"""Hex encode characters for use in JavaScript strings.""""""
+    return mark_safe(str(value).translate(_js_escapes))
+
+
+_json_script_escapes = {
+    ord('>'): '\\u003E',
+    ord('<'): '\\u003C',
+    ord('&'): '\\u0026',
+}
+
+
+def json_script(value, element_id):
+    """"""
+    Escape all the HTML/XML special characters with their unicode escapes, so
+    value is safe to be output anywhere except for inside a tag attribute. Wrap
+    the escaped JSON in a script tag.
+    """"""
+    from django.core.serializers.json import DjangoJSONEncoder
+    json_str = json.dumps(value, cls=DjangoJSONEncoder).translate(_json_script_escapes)
+    return format_html(
+        '<script id=""{}"" type=""application/json"">{}</script>',
+        element_id, mark_safe(json_str)
+    )
+
+
+def conditional_escape(text):
+    """"""
+    Similar to escape(), except that it doesn't operate on pre-escaped strings.
+
+    This function relies on the __html__ convention used both by Django's
+    SafeData class and by third-party libraries like markupsafe.
+    """"""
+    if isinstance(text, Promise):
+        text = str(text)
+    if hasattr(text, '__html__'):
+        return text.__html__()
+    else:
+        return escape(text)
+
+
+def format_html(format_string, *args, **kwargs):
+    """"""
+    Similar to str.format, but pass all arguments through conditional_escape(),
+    and call mark_safe() on the result. This function should be used instead
+    of str.format or % interpolation to build up small HTML fragments.
+    """"""
+    args_safe = map(conditional_escape, args)
+    kwargs_safe = {k: conditional_escape(v) for (k, v) in kwargs.items()}
+    return mark_safe(format_string.format(*args_safe, **kwargs_safe))
+
+
+def format_html_join(sep, format_string, args_generator):
+    """"""
+    A wrapper of format_html, for the common case of a group of arguments that
+    need to be formatted using the same format string, and then joined using
+    'sep'. 'sep' is also passed through conditional_escape.
+
+    'args_generator' should be an iterator that returns the sequence of 'args'
+    that will be passed to format_html.
+
+    Example:
+
+      format_html_join('\n', ""<li>{} {}</li>"", ((u.first_name, u.last_name)
+                                                  for u in users))
+    """"""
+    return mark_safe(conditional_escape(sep).join(
+        format_html(format_string, *args)
+        for args in args_generator
+    ))
+
+
+@keep_lazy_text
+def linebreaks(value, autoescape=False):
+    """"""Convert newlines into <p> and <br>s.""""""
+    value = normalize_newlines(value)
+    paras = re.split('\n{2,}', str(value))
+    if autoescape:
+        paras = ['<p>%s</p>' % escape(p).replace('\n', '<br>') for p in paras]
+    else:
+        paras = ['<p>%s</p>' % p.replace('\n', '<br>') for p in paras]
+    return '\n\n'.join(paras)
+
+
+class MLStripper(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self.reset()
+        self.fed = []
+
+    def handle_data(self, d):
+        self.fed.append(d)
+
+    def handle_entityref(self, name):
+        self.fed.append('&%s;' % name)
+
+    def handle_charref(self, name):
+        self.fed.append('&#%s;' % name)
+
+    def get_data(self):
+        return ''.join(self.fed)
+
+
+def strip_tags(value):
+    """"""Return the given HTML with all tags stripped.""""""
+    if hasattr(value, 'strip_tags'):
+        # The object has a strip_tags() method: let's use it
+        return value.strip_tags()
+    s = MLStripper()
+    s.feed(str(value))
+    s.close()
+    return s.get_data()
+
+
+def remove_tags(html, tags):
+    """"""Returns the given HTML with given tags removed.""""""
+    tags = [re.escape(tag) for tag in tags.split()]
+    tags_re = '(%s)' % '|'.join(tags)
+    starttag_re = re.compile(r'<%s(/?>|\s+[^>]*>)' % tags_re, re.I)
+    endtag_re = re.compile(r'<\\/%s>' % tags_re)
+    # Remove start and end tag, but not the contents.
+    html = starttag_re.sub('', html)
+    html = endtag_re.sub('', html)
+    return html
+
+
+def strip_spaces_between_tags(value):
+    """"""Return the given HTML with spaces between tags removed.""""""
+    return re.sub(r'>\s+<', '><', str(value))
+
+
+def strip_spaces_after_tabs(value):
+    """"""Takes output from strip_spaces_between_tags and removes spaces after tabs.""""""
+    return value.replace('\t ', '\t').replace('\r\n', '\n')
+
+
+def smart_urlquote(url, attrs=None):
+    """"""
+    Return a URL-encoded string.
+
+    If attrs is None, it's assumed that the url will be embedded in an HTML
+    attribute. This means '&' will be encoded as '&amp;'. Otherwise, the attrs
+    argument should be a list of attribute names on the link tag. For example
+    ['href', 'data-url'] would not escape '&' characters in the URL.
+    """"""
+    # Prepend scheme for URL without scheme
+    # This is consistent with urllib.parse.urlsplit.
+    if url.startswith('//'):
+        url = 'http:' + url
+    # We don't need to encode the url ourselves because urlsplit and urlunsplit
+    # will do it for us. We just need to use quote() in the right places.
+    url = urlsplit(url)
+    path = quote(url[2] or '')
+    url = list(url)
+    url[2] = path
+    # We want to use safe=''; this way, spaces (and any other character that
+    # would be encoded) are quoted. We also want to quote '#', which would
+    # otherwise be treated as the start of a fragment, and '&', which would
+    # otherwise be treated as the start of a query.
+    
+    # Quote both the key and the value of each query argument
+    query = '&'.join(
+        quote(key, safe='') + '=' + quote(value, safe='')
+        for key, value in parse_qsl(url[3] or '')
+    )
+    url[3] = query
+    # Return encoded URL
+    return urlunsplit(url)
+
+
+def urlize(value, trim_url_limit=None, nofollow=False, autoescape=False):
+    """"""
+    Convert URLs in plain text into clickable links.
+
+    Convert www.example.com, http://example.com and
+    username@example.com into links. Does not convert links containing
+    newlines.
+
+    If trim_url_limit is not None, truncate the displayed URL in the link to
+    trim_url_limit characters. Most users will find the display of long URLs
+    confusing and unintuitive. For example, the URL
+    ``https://example.com/dir/subdir/custom_template.html``
+    might be displayed as ``https://example.com/dir/subdir/custom_t...``.
+
+    If nofollow is True, add the rel=""nofollow"" attribute to the links.
+
+    If autoescape is True, autoescape the link text and URLs.
+    """"""
+    safe_input = isinstance(value, SafeData)
+    words = word_split_re.split(str(value))
+    for i, word in enumerate(words):
+        if '.' in word or '@' in word or ':' in word:
+            # lead: Current punctuation trimmed from the beginning of the word.
+            # middle: Current state of the word.
+            # trail: Current punctuation trimmed from the end of the word.
+            lead, middle, trail = '', word, ''
+            # Deal with punctuation.
+            lead, middle, trail = trim_punctuation(lead, middle, trail)
+
+            # Make URL we want to point to.
+            url = None
+            nofollow_attr = ' rel=""nofollow""' if nofollow else ''
+            if simple_url_re.match(middle):
+                url = smart_urlquote(unescape(middle))
+            elif simple_url_2_re.match(middle):
+                url = smart_urlquote('http://%s' % unescape(middle))
+            elif ':' not in middle and is_email_simple(middle):
+                local, domain = middle.rsplit('@', 1)
+                try:
+                    domain = domain.encode('idna').decode('ascii')
+                except UnicodeError:
+                    continue
+                url = 'mailto:%s@%s' % (local, domain)
+                nofollow_attr = ''
+
+            # Make link.
+            if url:
+                trimmed = trim_url(middle)
+                if autoescape and not safe_input:
+                    lead, trail = escape(lead), escape(trail)
+                    trimmed = escape(trimmed)
+                middle = '<a href=""%s""%s>%s</a>' % (escape(url), nofollow_attr, trimmed)
+                words[i] = mark_safe('%s%s%s' % (lead, middle, trail))
+            else:
+                if safe_input:
+                    words[i] = mark_safe(word)
+                elif autoescape:
+                    words[i] = escape(word)
+        elif safe_input:
+            words[i] = mark_safe(word)
+        elif autoescape:
+            words[i] = escape(word)
+    return ''.join(words)
+
+
+def avoid_wrapping(value):
+    """"""
+    Avoid text wrapping in the middle of a phrase by adding non-breaking
+    spaces where there previously were normal spaces.
+    """"""
+    return value.replace("" "", ""\xa0"")
+
+
+def html_safe(klass):
+    """"""
+    A decorator that defines the __html__ method. This helps non-Django
+    templates to detect classes whose __str__ methods return SafeString.
+    """"""
+    if '__html__' in klass.__dict__:
+        raise ValueError(
+            ""can't apply @html_safe to %s because it defines ""
+            ""__html__()."" % klass.__name__
+        )
+    if '__str__' not in klass.__dict__:
+        raise ValueError(
+            ""can't apply @html_safe to %s because it doesn't ""
+            ""define __str__()."" % klass.__name__
+        )
+    klass_str = klass.__str__
+    klass.__str__ = lambda self: mark_safe(klass_str(self))
+    klass.__html__ = lambda self: str(self)
+    return klass
+EOL"
+71,72,1,1183432149030529,1183432340388941,0,0.0,mv /tmp/corrected_html.py ./django/utils/html.py
+72,73,1,1183432340407937,1183432564600094,1,1.0,python compare_escape.py
+73,74,1,1183432564603701,1183432747769575,2,2.0,"sed -i ""s/ord(\\""'\\\\): \\\'',/ord(\""'\""): '\\u0027',/"" ./django/utils/html.py"
+74,75,1,1183432747781006,1183432941583746,0,0.0,"cat > recreate_js_escapes.py << 'EOL'
+#!/usr/bin/env python3
+
+# Read the file
+with open('./django/utils/html.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the _js_escapes section
+js_start = -1
+js_end = -1
+for i, line in enumerate(lines):
+    if '_js_escapes = {' in line:
+        js_start = i
+    elif js_start != -1 and '}' in line and js_end == -1:
+        js_end = i
+        break
+
+# Create the fixed _js_escapes content
+fixed_js = [
+    '_js_escapes = {\n',
+    ""    ord('\\\\'): '\\\\\\u005C',\n"",
+    ""    ord(\\""'\\\\): '\\\\\\u0027',\n"",
+    ""    ord('\\\""'): '\\\\\\u0022',\n"",
+    ""    ord('>'): '\\\\\\u003E',\n"",
+    ""    ord('<'): '\\\\\\u003C',\n"",
+    ""    ord('&'): '\\\\\\u0026',\n"",
+    ""    ord('='): '\\\\\\u003D',\n"",
+    ""    ord('-'): '\\\\\\u002D',\n"",
+    ""    ord(';'): '\\\\\\u003B',\n"",
+    ""    ord('`'): '\\\\\\u0060',\n"",
+    ""    ord('\\\\u2028'): '\\\\\\u2028',\n"",
+    ""    ord('\\\\u2029'): '\\\\\\u2029'\n"",
+    '}\n'
+]
+
+# Replace the section
+new_lines = []
+for i, line in enumerate(lines):
+    if i == js_start:
+        new_lines.extend(fixed_js)
+    elif js_start < i <= js_end:
+        continue
+    else:
+        new_lines.append(line)
+
+# Write the file back
+with open('./django/utils/html.py', 'w') as f:
+    f.writelines(new_lines)
+
+print(""Recreated _js_escapes dictionary"")
+EOL"
+75,76,1,1183432941594145,1183433144961913,1,1.0,python recreate_js_escapes.py
+76,77,1,1183433144966131,1183434516644211,0,0.0,git diff
+77,78,1,1183434516659890,1183434753761928,0,0.0,git checkout django/utils/html.py && git diff
+78,79,1,1183434753788097,1183434942666973,0,0.0,"sed -i ""1i from html import escape as html_escape_builtin"" ./django/utils/html.py && sed -i ""/_html_escapes = {/,/}/d"" ./django/utils/html.py && sed -i ""/def escape(text):/,/return mark_safe(str(text).translate(_html_escapes))/c def escape(text):\n    \""\""\""\n    Return the given text with ampersands, quotes and angle brackets encoded\n    for use in HTML.\n\n    Always escape input, even if it's already escaped and marked as such.\n    This may result in double-escaping. If this is a concern, use\n    conditional_escape() instead.\n    \""\""\""\n    # Use Python stdlib html.escape() instead of custom translation\n    # Note: This changes ' to &#x27 instead of &#39;, but both are valid HTML\n    return mark_safe(html_escape_builtin(str(text), quote=True))"" ./django/utils/html.py"
+79,80,1,1183434942678685,1183435165187704,0,0.0,git diff
+80,81,1,1183435165192173,1183435390853450,0,0.0,git diff > patch.txt
+81,82,1,1183435390856365,1183435575171557,0,0.0,cat patch.txt
+82,83,1,1183435575195131,1183435761636072,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

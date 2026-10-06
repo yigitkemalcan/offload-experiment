@@ -1,0 +1,433 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,2,1,1184485786930776,1184486052814565,0,0.0,ls -la
+1,3,1,1184486052830595,1184486236487148,0,0.0,ls -la django/db/models/fields/
+2,4,1,1184486236496957,1184486420016027,0,0.0,"grep -A 20 ""class ForeignKey"" django/db/models/fields/related.py"
+3,5,1,1184486420025274,1184486610032267,0,0.0,"grep -n ""def validate"" django/db/models/fields/related.py"
+4,6,1,1184486610047736,1184486795645779,0,0.0,"sed -n '905,925p' django/db/models/fields/related.py"
+5,7,1,1184486795666337,1184486980875999,0,0.0,"cat > reproduce_issue.py << 'EOL'
+from django.db import models
+from django import forms
+
+class ArticleManager(models.Manager):
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs.filter(archived=False)
+
+class Article(models.Model):
+    title = models.CharField(max_length=100)
+    archived = models.BooleanField(default=False)
+    # Don't include archived articles by default.
+    objects = ArticleManager()
+
+    def __str__(self):
+        return self.title
+
+class FavoriteArticle(models.Model):
+    article = models.ForeignKey(Article, on_delete=models.CASCADE)
+
+class FavoriteArticleForm(forms.ModelForm):
+    class Meta:
+        model = FavoriteArticle
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Use the base manager instead of the default manager to allow archived articles.
+        self.fields['article'].queryset = Article._base_manager.all()
+
+# Set up Django
+import django
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            '__main__',
+        ],
+        SECRET_KEY='test-secret-key',
+    )
+
+django.setup()
+
+# Create tables
+from django.core.management import call_command
+from django.db import connection
+
+call_command('makemigrations', '__main__', '--noinput')
+call_command('migrate', '--noinput')
+
+# Create test data
+article1 = Article.objects.create(title=""Active Article"", archived=False)
+article2 = Article.objects.create(title=""Archived Article"", archived=True)
+
+# Test the form
+form_data = {'article': article2.pk}
+form = FavoriteArticleForm(data=form_data)
+print(f""Form is valid: {form.is_valid()}"")
+if not form.is_valid():
+    print(f""Form errors: {form.errors}"")
+EOL"
+6,8,1,1184486980898651,1184487642609808,1,1.0,python reproduce_issue.py
+7,9,1,1184487642690819,1184487836017227,0,0.0,"cat > reproduce_issue.py << 'EOL'
+import os
+import django
+from django.conf import settings
+
+# Configure Django settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            '__main__',
+        ],
+        SECRET_KEY='test-secret-key',
+        DEFAULT_AUTO_FIELD='django.db.models.BigAutoField',
+    )
+
+django.setup()
+
+# Now import Django models and forms
+from django.db import models
+from django import forms
+
+class ArticleManager(models.Manager):
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs.filter(archived=False)
+
+class Article(models.Model):
+    title = models.CharField(max_length=100)
+    archived = models.BooleanField(default=False)
+    # Don't include archived articles by default.
+    objects = ArticleManager()
+
+    def __str__(self):
+        return self.title
+
+class FavoriteArticle(models.Model):
+    article = models.ForeignKey(Article, on_delete=models.CASCADE)
+
+class FavoriteArticleForm(forms.ModelForm):
+    class Meta:
+        model = FavoriteArticle
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Use the base manager instead of the default manager to allow archived articles.
+        self.fields['article'].queryset = Article._base_manager.all()
+
+# Create tables
+from django.core.management import call_command
+from django.db import connection
+
+call_command('makemigrations', '__main__', '--noinput')
+call_command('migrate', '--noinput')
+
+# Create test data
+article1 = Article.objects.create(title=""Active Article"", archived=False)
+article2 = Article.objects.create(title=""Archived Article"", archived=True)
+
+# Test the form
+form_data = {'article': article2.pk}
+form = FavoriteArticleForm(data=form_data)
+print(f""Form is valid: {form.is_valid()}"")
+if not form.is_valid():
+    print(f""Form errors: {form.errors}"")
+EOL"
+8,10,1,1184487836044177,1184488462483145,1,1.0,python reproduce_issue.py
+9,11,1,1184488462491120,1184488657221366,0,0.0,"cat > reproduce_issue.py << 'EOL'
+import os
+import django
+from django.conf import settings
+
+# Configure Django settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            '__main__',
+        ],
+        SECRET_KEY='test-secret-key',
+        DEFAULT_AUTO_FIELD='django.db.models.BigAutoField',
+    )
+
+django.setup()
+
+# Now import Django models and forms
+from django.db import models
+from django import forms
+
+class ArticleManager(models.Manager):
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs.filter(archived=False)
+
+class Article(models.Model):
+    title = models.CharField(max_length=100)
+    archived = models.BooleanField(default=False)
+    # Don't include archived articles by default.
+    objects = ArticleManager()
+
+    def __str__(self):
+        return self.title
+
+class FavoriteArticle(models.Model):
+    article = models.ForeignKey(Article, on_delete=models.CASCADE)
+
+class FavoriteArticleForm(forms.ModelForm):
+    class Meta:
+        model = FavoriteArticle
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Use the base manager instead of the default manager to allow archived articles.
+        self.fields['article'].queryset = Article._base_manager.all()
+
+# Create tables
+from django.core.management import call_command
+from django.db import connection
+
+call_command('makemigrations', '__main__', '--noinput')
+call_command('migrate', '--run-syncdb')  # Use --run-syncdb to create tables for models not tracked by migrations
+
+# Create test data
+article1 = Article.objects.create(title=""Active Article"", archived=False)
+article2 = Article.objects.create(title=""Archived Article"", archived=True)
+
+# Test the form
+form_data = {'article': article2.pk}
+form = FavoriteArticleForm(data=form_data)
+print(f""Form is valid: {form.is_valid()}"")
+if not form.is_valid():
+    print(f""Form errors: {form.errors}"")
+EOL"
+10,12,1,1184488657235833,1184489152583779,1,1.0,python reproduce_issue.py
+11,13,1,1184489152600590,1184489340894496,0,0.0,"cat > reproduce_issue.py << 'EOL'
+import os
+import django
+from django.conf import settings
+from django.test.utils import setup_test_environment
+
+# Configure Django settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            '__main__',
+        ],
+        SECRET_KEY='test-secret-key',
+        DEFAULT_AUTO_FIELD='django.db.models.BigAutoField',
+    )
+
+django.setup()
+
+# Set up test environment
+setup_test_environment()
+
+# Now import Django models and forms
+from django.db import models
+from django import forms
+
+class ArticleManager(models.Manager):
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs.filter(archived=False)
+
+class Article(models.Model):
+    title = models.CharField(max_length=100)
+    archived = models.BooleanField(default=False)
+    # Don't include archived articles by default.
+    objects = ArticleManager()
+
+    def __str__(self):
+        return self.title
+
+class FavoriteArticle(models.Model):
+    article = models.ForeignKey(Article, on_delete=models.CASCADE)
+
+class FavoriteArticleForm(forms.ModelForm):
+    class Meta:
+        model = FavoriteArticle
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Use the base manager instead of the default manager to allow archived articles.
+        self.fields['article'].queryset = Article._base_manager.all()
+
+# Create the database schema
+from django.test import TestCase
+
+class TestFavoriteArticleForm(TestCase):
+    def setUp(self):
+        # Create test data
+        self.active_article = Article.objects.create(title=""Active Article"", archived=False)
+        self.archived_article = Article.objects.create(title=""Archived Article"", archived=True)
+    
+    def test_form_with_archived_article(self):
+        # Test the form with an archived article
+        form_data = {'article': self.archived_article.pk}
+        form = FavoriteArticleForm(data=form_data)
+        print(f""Form is valid: {form.is_valid()}"")
+        if not form.is_valid():
+            print(f""Form errors: {form.errors}"")
+        
+        # Also test with active article for comparison
+        form_data_active = {'article': self.active_article.pk}
+        form_active = FavoriteArticleForm(data=form_data_active)
+        print(f""Form with active article is valid: {form_active.is_valid()}"")
+        if not form_active.is_valid():
+            print(f""Form with active article errors: {form_active.errors}"")
+
+# Run the test
+if __name__ == '__main__':
+    # Create a test runner
+    from django.test.runner import DiscoverRunner
+    runner = DiscoverRunner(verbosity=2)
+    # Run the specific test method
+    test_suite = runner.build_suite([__file__])
+    runner.run_suite(test_suite)
+EOL"
+12,14,1,1184489340900146,1184489878374910,1,1.0,python reproduce_issue.py
+13,15,1,1184489878404696,1184490073449361,0,0.0,"cat > reproduce_issue.py << 'EOL'
+import os
+import django
+from django.conf import settings
+
+# Configure Django settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            '__main__',
+        ],
+        SECRET_KEY='test-secret-key',
+        DEFAULT_AUTO_FIELD='django.db.models.BigAutoField',
+    )
+
+django.setup()
+
+# Now import Django models and forms
+from django.db import models
+from django import forms
+from django.db import connection
+from django.core.management.color import no_style
+
+# Create the database tables directly
+from django.db import models
+from django.apps import apps
+
+class ArticleManager(models.Manager):
+    def get_queryset(self):
+        qs = super().get_queryset()
+        return qs.filter(archived=False)
+
+class Article(models.Model):
+    title = models.CharField(max_length=100)
+    archived = models.BooleanField(default=False)
+    # Don't include archived articles by default.
+    objects = ArticleManager()
+
+    def __str__(self):
+        return self.title
+
+class FavoriteArticle(models.Model):
+    article = models.ForeignKey(Article, on_delete=models.CASCADE)
+
+class FavoriteArticleForm(forms.ModelForm):
+    class Meta:
+        model = FavoriteArticle
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Use the base manager instead of the default manager to allow archived articles.
+        self.fields['article'].queryset = Article._base_manager.all()
+
+# Create tables in the database
+with connection.schema_editor() as schema_editor:
+    schema_editor.create_model(Article)
+    schema_editor.create_model(FavoriteArticle)
+
+# Create test data
+article1 = Article.objects.create(title=""Active Article"", archived=False)
+article2 = Article.objects.create(title=""Archived Article"", archived=True)
+
+# Test the form
+form_data = {'article': article2.pk}
+form = FavoriteArticleForm(data=form_data)
+print(f""Form is valid: {form.is_valid()}"")
+if not form.is_valid():
+    print(f""Form errors: {form.errors}"")
+EOL"
+14,16,1,1184490073464118,1184490548364214,0,0.0,python reproduce_issue.py
+15,17,1,1184490548378641,1184490739863291,0,0.0,sed -i 's/_default_manager/_base_manager/g' django/db/models/fields/related.py
+16,18,1,1184490739874131,1184491216531975,0,0.0,python reproduce_issue.py
+17,19,1,1184491216555439,1184491425806281,0,0.0,git diff -- django/db/models/fields/related.py > patch.txt
+18,20,1,1184491425826910,1184491614138824,0,0.0,cat patch.txt
+19,21,1,1184491614153692,1184491820947840,0,0.0,"git checkout django/db/models/fields/related.py && sed -i '0,/    def validate/{s/_default_manager/_base_manager/}' django/db/models/fields/related.py"
+20,22,1,1184491820970542,1184492023619679,0,0.0,"git checkout django/db/models/fields/related.py && sed -i '914,916s/_default_manager/_base_manager/' django/db/models/fields/related.py"
+21,23,1,1184492023643223,1184492763457459,0,0.0,git diff -- django/db/models/fields/related.py
+22,24,1,1184492763497334,1184492964713372,0,0.0,"git checkout django/db/models/fields/related.py && sed -i '914,916s/\._default_manager/\._base_manager/' django/db/models/fields/related.py"
+23,25,1,1184492964730174,1184493158013080,0,0.0,sed -i '914s/_default_manager/_base_manager/' django/db/models/fields/related.py
+24,26,1,1184493158027276,1184493389807660,0,0.0,git diff -- django/db/models/fields/related.py
+25,27,1,1184493389818530,1184493580484246,0,0.0,"sed -n '914,916p' django/db/models/fields/related.py"
+26,28,1,1184493580490789,1184493776310239,0,0.0,cp django/db/models/fields/related.py related.py.bak && sed '914s/_default_manager/_base_manager/' related.py.bak > django/db/models/fields/related.py && rm related.py.bak
+27,29,1,1184493776342820,1184493965562394,0,0.0,"sed -n '914,916p' django/db/models/fields/related.py"
+28,30,1,1184493965575809,1184494153927332,0,0.0,"cat > temp_related.py << 'EOL'
+$(sed '914s/_default_manager/_base_manager/' django/db/models/fields/related.py)
+EOL
+mv temp_related.py django/db/models/fields/related.py"
+29,31,1,1184494153944063,1184494345056205,0,0.0,"sed -n '914,916p' django/db/models/fields/related.py"
+30,32,1,1184494345071303,1184494539886378,0,0.0,head -n 916 django/db/models/fields/related.py | tail -n 3
+31,33,1,1184494539896747,1184494725216334,0,0.0,sed '914s/_default_manager/_base_manager/' django/db/models/fields/related.py > temp.py && mv temp.py django/db/models/fields/related.py
+32,34,1,1184494725241582,1184494904314273,0,0.0,"sed -n '914,916p' django/db/models/fields/related.py"
+33,35,1,1184494904319743,1184495101467695,0,0.0,git diff -- django/db/models/fields/related.py > patch.txt
+34,36,1,1184495101471953,1184495294239982,0,0.0,cat patch.txt
+35,37,1,1184495294254269,1184495490047213,0,0.0,cp django/db/models/fields/related.py related.py.bak && sed '914s/_default_manager/_base_manager/' related.py.bak > temp.py && mv temp.py django/db/models/fields/related.py && rm -f related.py.bak
+36,38,1,1184495490062561,1184495687429554,0,0.0,git diff -- django/db/models/fields/related.py > patch.txt
+37,39,1,1184495687442648,1184495882343582,0,0.0,cat patch.txt
+38,40,1,1184495882358119,1184496089425426,0,0.0,git checkout django/db/models/fields/related.py && git diff -- django/db/models/fields/related.py > patch.txt
+39,41,1,1184496089440675,1184496282225958,0,0.0,cat patch.txt
+40,42,1,1184496282230907,1184496521896630,0,0.0,sed -i '914s/_default_manager/_base_manager/' django/db/models/fields/related.py && git diff -- django/db/models/fields/related.py > patch.txt
+41,43,1,1184496521902701,1184496714268799,0,0.0,cat patch.txt
+42,44,1,1184496714352440,1184496913643574,0,0.0,git show HEAD:django/db/models/fields/related.py > original.py && diff -u original.py django/db/models/fields/related.py > patch.txt && rm original.py
+43,45,1,1184496913652461,1184497097382040,0,0.0,cat patch.txt
+44,46,1,1184497097420913,1184497286838029,0,0.0,"echo ""diff --git a/django/db/models/fields/related.py b/django/db/models/fields/related.py\nindex d517d7269b..0f0a5d982b 100644\n--- a/django/db/models/fields/related.py\n+++ b/django/db/models/fields/related.py\n@@ -914,7 +914,7 @@ class ForeignKey(ForeignObject):\n             return\n\n         using = router.db_for_read(self.remote_field.model, instance=model_instance)\n-        qs = self.remote_field.model._default_manager.using(using).filter(\n+        qs = self.remote_field.model._base_manager.using(using).filter(\n             **{self.remote_field.field_name: value}\n         )\n         qs = qs.complex_filter(self.get_limit_choices_to())"" > patch.txt"
+45,47,1,1184497286850793,1184497479904990,0,0.0,cat patch.txt
+46,48,1,1184497479918545,1184497665873611,0,0.0,"echo -e ""diff --git a/django/db/models/fields/related.py b/django/db/models/fields/related.py\nindex d517d7269b..0f0a5d982b 100644\n--- a/django/db/models/fields/related.py\n+++ b/django/db/models/fields/related.py\n@@ -914,7 +914,7 @@ class ForeignKey(ForeignObject):\n             return\n\n         using = router.db_for_read(self.remote_field.model, instance=model_instance)\n-        qs = self.remote_field.model._default_manager.using(using).filter(\n+        qs = self.remote_field.model._base_manager.using(using).filter(\n             **{self.remote_field.field_name: value}\n         )\n         qs = qs.complex_filter(self.get_limit_choices_to())"" > patch.txt"
+47,49,1,1184497665886175,1184497856899050,0,0.0,cat patch.txt
+48,50,1,1184497856905361,1184498043859492,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

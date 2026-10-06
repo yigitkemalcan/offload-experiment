@@ -1,0 +1,661 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1183999503118043,1184000555019219,0,0.0,"find . -type f -name ""*.py"" | xargs grep -l ""trim_docstring"""
+1,2,1,1184000555040318,1184000746620797,0,0.0,cat ./django/contrib/admindocs/utils.py
+2,3,1,1184000746633722,1184000928950518,0,0.0,sed -i '/indent = min(len(line) - len(line.lstrip()) for line in lines if line.lstrip())/c\    indent = min(len(line) - len(line.lstrip()) for line in lines[1:] if line.lstrip())' ./django/contrib/admindocs/utils.py
+3,4,1,1184000928959946,1184001106813393,0,0.0,"grep -A 10 ""def trim_docstring"" ./django/contrib/admindocs/utils.py"
+4,5,1,1184001106817621,1184001289255349,0,0.0,"cat > test_docstring.py << 'EOL'
+from django.contrib.admindocs.utils import trim_docstring
+
+def test():
+    """"""test tests something.
+    """"""
+    pass
+
+docstring = test.__doc__
+print(""Original docstring:"")
+print(repr(docstring))
+print(""\nTrimmed docstring:"")
+print(repr(trim_docstring(docstring)))
+EOL"
+5,6,1,1184001289261531,1184001952828800,1,1.0,python test_docstring.py
+6,7,1,1184001952850621,1184002132772220,0,0.0,sed -i '/indent = min(len(line) - len(line.lstrip()) for line in lines[1:] if line.lstrip())/c\    if len(lines) == 1:\n        return docstring.strip()\n    else:\n        non_empty_lines = [line for line in lines[1:] if line.lstrip()]\n        if not non_empty_lines:\n            indent = 0\n        else:\n            indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)' ./django/contrib/admindocs/utils.py
+7,8,1,1184002132782819,1184002310435106,0,0.0,"grep -A 15 ""def trim_docstring"" ./django/contrib/admindocs/utils.py"
+8,9,1,1184002310509750,1184002492377280,0,0.0,"cat > temp_utils.py << 'EOL'
+""""""Misc. utility functions/classes for admin documentation generator.""""""
+
+import re
+from email.errors import HeaderParseError
+from email.parser import HeaderParser
+
+from django.urls import reverse
+from django.utils.regex_helper import _lazy_re_compile
+from django.utils.safestring import mark_safe
+
+try:
+    import docutils.core
+    import docutils.nodes
+    import docutils.parsers.rst.roles
+except ImportError:
+    docutils_is_available = False
+else:
+    docutils_is_available = True
+
+def get_view_name(view_func):
+    mod_name = view_func.__module__
+    view_name = getattr(view_func, '__qualname__', view_func.__class__.__name__)
+    return mod_name + '.' + view_name
+
+def trim_docstring(docstring):
+    """"""
+    Uniformly trim leading/trailing whitespace from docstrings.
+
+    Based on https://www.python.org/dev/peps/pep-0257/#handling-docstring-indentation
+    """"""
+    if not docstring or not docstring.strip():
+        return ''
+    # Convert tabs to spaces and split into lines
+    lines = docstring.expandtabs().splitlines()
+    
+    # If there's only one line, just return it stripped
+    if len(lines) == 1:
+        return docstring.strip()
+    
+    # For multi-line docstrings, calculate indentation from non-empty lines after the first
+    non_empty_lines = [line for line in lines[1:] if line.lstrip()]
+    if not non_empty_lines:
+        indent = 0
+    else:
+        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)
+    
+    # Trim the appropriate amount of indentation from each line
+    trimmed = [lines[0].lstrip()] + [line[indent:].rstrip() for line in lines[1:]]
+    return ""\n"".join(trimmed).strip()
+
+EOL"
+9,10,1,1184002492384193,1184002680219473,0,0.0,"grep -A 100 ""def parse_docstring"" ./django/contrib/admindocs/utils.py | tail -n +2 >> temp_utils.py && mv temp_utils.py ./django/contrib/admindocs/utils.py"
+10,11,1,1184002680224403,1184003085389752,0,0.0,python test_docstring.py
+11,12,1,1184003085479905,1184003263724014,0,0.0,"cat > test_docstring_comprehensive.py << 'EOL'
+from django.contrib.admindocs.utils import trim_docstring
+
+def test1():
+    """"""Single line docstring""""""
+    pass
+
+def test2():
+    """"""Multi-line docstring
+    with indentation.
+    """"""
+    pass
+
+def test3():
+    """"""test tests something.
+    """"""
+    pass
+
+def test4():
+    """"""Empty second line
+
+    """"""
+    pass
+
+def test5():
+    """"""No newline at end""""""
+    pass
+
+def test6():
+    """""" 
+    Only whitespace on first line
+    """"""
+    pass
+
+def test7():
+    """""" 
+    
+    Only whitespace
+    """"""
+    pass
+
+tests = [test1, test2, test3, test4, test5, test6, test7]
+
+for i, test_func in enumerate(tests, 1):
+    docstring = test_func.__doc__
+    trimmed = trim_docstring(docstring)
+    print(f""Test {i}:"")
+    print(f""  Original: {repr(docstring)}"")
+    print(f""  Trimmed:  {repr(trimmed)}"")
+    print()
+EOL"
+12,13,1,1184003263729525,1184003673974136,0,0.0,python test_docstring_comprehensive.py
+13,14,1,1184003674082187,1184003872726197,0,0.0,git diff -- ./django/contrib/admindocs/utils.py > patch.txt
+14,15,1,1184003872732569,1184004054785537,0,0.0,cat patch.txt
+15,16,1,1184004054790877,1184004252733664,4,4.0,"git checkout HEAD -- ./django/contrib/admindocs/utils.py && sed -i '/def trim_docstring/,/return ""\\n"".join(trimmed).strip()/c\\ndef trim_docstring(docstring):\n    """"""\n    Uniformly trim leading/trailing whitespace from docstrings.\n\n    Based on https://www.python.org/dev/peps/pep-0257/#handling-docstring-indentation\n    """"""\n    if not docstring or not docstring.strip():\n        return \'\'\n    # Convert tabs to spaces and split into lines\n    lines = docstring.expandtabs().splitlines()\n    \n    # If there\'s only one line, just return it stripped\n    if len(lines) == 1:\n        return docstring.strip()\n    \n    # For multi-line docstrings, calculate indentation from non-empty lines after the first\n    non_empty_lines = [line for line in lines[1:] if line.lstrip()]\n    if not non_empty_lines:\n        indent = 0\n    else:\n        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)\n    \n    # Trim the appropriate amount of indentation from each line\n    trimmed = [lines[0].lstrip()] + [line[indent:].rstrip() for line in lines[1:]]\n    return ""\\n"".join(trimmed).strip()' ./django/contrib/admindocs/utils.py"
+16,17,1,1184004252746709,1184004453842007,0,0.0,"python -c ""
+import re
+with open('./django/contrib/admindocs/utils.py', 'r') as f:
+    content = f.read()
+
+# Extract the trim_docstring function
+func_pattern = re.compile(r'def trim_docstring\(docstring\):.*?return \""\\\\n\"".join\(trimmed\).strip\(\)', re.DOTALL)
+func_match = func_pattern.search(content)
+
+if func_match:
+    # Define the replacement function
+    new_func = '''def trim_docstring(docstring):
+    \""\""\
+    Uniformly trim leading/trailing whitespace from docstrings.
+
+    Based on https://www.python.org/dev/peps/pep-0257/#handling-docstring-indentation
+    \""\""\
+    if not docstring or not docstring.strip():
+        return ''
+    # Convert tabs to spaces and split into lines
+    lines = docstring.expandtabs().splitlines()
+    
+    # If there's only one line, just return it stripped
+    if len(lines) == 1:
+        return docstring.strip()
+    
+    # For multi-line docstrings, calculate indentation from non-empty lines after the first
+    non_empty_lines = [line for line in lines[1:] if line.lstrip()]
+    if not non_empty_lines:
+        indent = 0
+    else:
+        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)
+    
+    # Trim the appropriate amount of indentation from each line
+    trimmed = [lines[0].lstrip()] + [line[indent:].rstrip() for line in lines[1:]]
+    return \""\\n\"".join(trimmed).strip()'''
+    
+    # Replace the function
+    new_content = content[:func_match.start()] + new_func + content[func_match.end():]
+    
+    # Write the updated content back to the file
+    with open('./django/contrib/admindocs/utils.py', 'w') as f:
+        f.write(new_content)
+"""
+17,18,1,1184004453845504,1184004639563221,0,0.0,git diff -- ./django/contrib/admindocs/utils.py > patch.txt
+18,19,1,1184004639574381,1184004825175976,0,0.0,cat patch.txt
+19,20,1,1184004825255199,1184005004474428,2,2.0,"git checkout HEAD -- ./django/contrib/admindocs/utils.py && sed -i '/def trim_docstring(docstring):/,/return ""\\n"".join(trimmed).strip()/c\\ndef trim_docstring(docstring):\\n    \""\""\""\\n    Uniformly trim leading/trailing whitespace from docstrings.\\n\\n    Based on https://www.python.org/dev/peps/pep-0257/#handling-docstring-indentation\\n    \""\""\""\\n    if not docstring or not docstring.strip():\\n        return ''\\n    # Convert tabs to spaces and split into lines\\n    lines = docstring.expandtabs().splitlines()\\n    \\n    # If there\\'s only one line, just return it stripped\\n    if len(lines) == 1:\\n        return docstring.strip()\\n    \\n    # For multi-line docstrings, calculate indentation from non-empty lines after the first\\n    non_empty_lines = [line for line in lines[1:] if line.lstrip()]\\n    if not non_empty_lines:\\n        indent = 0\\n    else:\\n        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)\\n    \\n    # Trim the appropriate amount of indentation from each line\\n    trimmed = [lines[0].lstrip()] + [line[indent:].rstrip() for line in lines[1:]]\\n    return ""\\\\n"".join(trimmed).strip()' ./django/contrib/admindocs/utils.py"
+20,21,1,1184005004571054,1184005183723788,2,2.0,"cp ./django/contrib/admindocs/utils.py ./django/contrib/admindocs/utils.py.bak && python -c ""
+with open('./django/contrib/admindocs/utils.py.bak', 'r') as f:
+    lines = f.readlines()
+
+with open('./django/contrib/admindocs/utils.py', 'w') as f:
+    for line in lines:
+        if line.strip().startswith('def trim_docstring(docstring):'):
+            f.write('def trim_docstring(docstring):\n')
+            f.write('    \""\""\""\n')
+            f.write('    Uniformly trim leading/trailing whitespace from docstrings.\n')
+            f.write('    \n')
+            f.write('    Based on https://www.python.org/dev/peps/pep-0257/#handling-docstring-indentation\n')
+            f.write('    \""\""\""\n')
+            f.write('    if not docstring or not docstring.strip():\n')
+            f.write('        return ''\n')
+            f.write('    # Convert tabs to spaces and split into lines\n')
+            f.write('    lines = docstring.expandtabs().splitlines()\n')
+            f.write('    \n')
+            f.write('    # If there\'s only one line, just return it stripped\n')
+            f.write('    if len(lines) == 1:\n')
+            f.write('        return docstring.strip()\n')
+            f.write('    \n')
+            f.write('    # For multi-line docstrings, calculate indentation from non-empty lines after the first\n')
+            f.write('    non_empty_lines = [line for line in lines[1:] if line.lstrip()]\n')
+            f.write('    if not non_empty_lines:\n')
+            f.write('        indent = 0\n')
+            f.write('    else:\n')
+            f.write('        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)\n')
+            f.write('    \n')
+            f.write('    # Trim the appropriate amount of indentation from each line\n')
+            f.write('    trimmed = [lines[0].lstrip()] + [line[indent:].rstrip() for line in lines[1:]]\n')
+            f.write('    return ""\\n"".join(trimmed).strip()\n')
+        elif not (line.strip().startswith('def trim_docstring') or line.strip().startswith('""""""') or line.strip().startswith('indent =') or line.strip().startswith('trimmed =') or line.strip().startswith('return')):
+            f.write(line)
+"""
+21,22,1,1184005183736532,1184005368177780,0,0.0,"cat > corrected_trim_docstring.py << 'EOL'
+def trim_docstring(docstring):
+    """"""
+    Uniformly trim leading/trailing whitespace from docstrings.
+
+    Based on https://www.python.org/dev/peps/pep-0257/#handling-docstring-indentation
+    """"""
+    if not docstring or not docstring.strip():
+        return ''
+    # Convert tabs to spaces and split into lines
+    lines = docstring.expandtabs().splitlines()
+    
+    # If there's only one line, just return it stripped
+    if len(lines) == 1:
+        return docstring.strip()
+    
+    # For multi-line docstrings, calculate indentation from non-empty lines after the first
+    non_empty_lines = [line for line in lines[1:] if line.lstrip()]
+    if not non_empty_lines:
+        indent = 0
+    else:
+        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)
+    
+    # Trim the appropriate amount of indentation from each line
+    trimmed = [lines[0].lstrip()] + [line[indent:].rstrip() for line in lines[1:]]
+    return ""\n"".join(trimmed).strip()
+EOL"
+22,23,1,1184005368256302,1184005576242016,0,0.0,"python -c ""
+import re
+
+# Read the corrected function
+with open('corrected_trim_docstring.py', 'r') as f:
+    corrected_function = f.read().strip()
+
+# Read the original file
+with open('./django/contrib/admindocs/utils.py', 'r') as f:
+    content = f.read()
+
+# Find the trim_docstring function using regex
+func_pattern = re.compile(r'def\s+trim_docstring\s*\([^)]*\):[^@]*?(def|\Z)', re.DOTALL)
+func_match = func_pattern.search(content)
+
+if func_match:
+    # Extract the function body (everything before the next function or end of file)
+    func_body = func_match.group(0)
+    # Replace the function body with the corrected version
+    # We need to preserve the indentation of the original function
+    original_indent = ' ' * (len(func_body) - len(func_body.lstrip()))
+    # Add the same indentation to each line of the corrected function
+    corrected_indented = '\n'.join([original_indent + line if line.strip() else line for line in corrected_function.split('\n')])
+    # Replace the function in the content
+    new_content = content[:func_match.start()] + corrected_indented + content[func_match.end()-len(func_match.group(1)):] if func_match.group(1).startswith('d') else content[:func_match.start()] + corrected_indented + content[func_match.end():]
+    
+    # Write the updated content back to the file
+    with open('./django/contrib/admindocs/utils.py', 'w') as f:
+        f.write(new_content)
+else:
+    print('Could not find trim_docstring function')
+"""
+23,24,1,1184005576254489,1184005762248809,0,0.0,git diff -- ./django/contrib/admindocs/utils.py > patch.txt && cat patch.txt
+24,25,1,1184005762313836,1184005944965463,2,2.0,"git checkout HEAD -- ./django/contrib/admindocs/utils.py && sed -i '/^def trim_docstring(docstring):$/,/^def parse_docstring/{/^def trim_docstring(docstring):$/!{/^def parse_docstring/d};/^def trim_docstring(docstring):$/!d};/^def trim_docstring(docstring):$/a\
+def trim_docstring(docstring):\
+    \""\""\""\
+    Uniformly trim leading/trailing whitespace from docstrings.\
+\
+    Based on https://www.python.org/dev/peps/pep-0257/#handling-docstring-indentation\
+    \""\""\""\
+    if not docstring or not docstring.strip():\
+        return ''\
+    # Convert tabs to spaces and split into lines\
+    lines = docstring.expandtabs().splitlines()\
+    \
+    # If there\'s only one line, just return it stripped\
+    if len(lines) == 1:\
+        return docstring.strip()\
+    \
+    # For multi-line docstrings, calculate indentation from non-empty lines after the first\
+    non_empty_lines = [line for line in lines[1:] if line.lstrip()]\
+    if not non_empty_lines:\
+        indent = 0\
+    else:\
+        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)\
+    \
+    # Trim the appropriate amount of indentation from each line\
+    trimmed = [lines[0].lstrip()] + [line[indent:].rstrip() for line in lines[1:]]\
+    return ""\\n"".join(trimmed).strip()' ./django/contrib/admindocs/utils.py"
+25,26,1,1184005944979650,1184006150926519,0,0.0,"python -c ""
+import re
+
+# Read the original file
+with open('./django/contrib/admindocs/utils.py', 'r') as f:
+    content = f.read()
+
+# Define the new function
+new_function = '''def trim_docstring(docstring):
+    \""\""\
+    Uniformly trim leading/trailing whitespace from docstrings.
+
+    Based on https://www.python.org/dev/peps/pep-0257/#handling-docstring-indentation
+    \""\""\
+    if not docstring or not docstring.strip():
+        return ''
+    # Convert tabs to spaces and split into lines
+    lines = docstring.expandtabs().splitlines()
+    
+    # If there's only one line, just return it stripped
+    if len(lines) == 1:
+        return docstring.strip()
+    
+    # For multi-line docstrings, calculate indentation from non-empty lines after the first
+    non_empty_lines = [line for line in lines[1:] if line.lstrip()]
+    if not non_empty_lines:
+        indent = 0
+    else:
+        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)
+    
+    # Trim the appropriate amount of indentation from each line
+    trimmed = [lines[0].lstrip()] + [line[indent:].rstrip() for line in lines[1:]]
+    return \""\\n\"".join(trimmed).strip()'''
+
+# Find the start of the trim_docstring function
+start_match = re.search(r'def\s+trim_docstring\s*\([^)]*\):', content)
+if not start_match:
+    raise Exception('Could not find trim_docstring function')
+
+# Find the end of the function (next def or end of file)
+end_match = re.search(r'\ndef\s+', content[start_match.start():])
+end_pos = start_match.start() + end_match.start() if end_match else len(content)
+
+# Replace the function
+new_content = content[:start_match.start()] + new_function + content[end_pos:]
+
+# Write the updated content back to the file
+with open('./django/contrib/admindocs/utils.py', 'w') as f:
+    f.write(new_content)
+"""
+26,27,1,1184006150929995,1184006333995533,0,0.0,git diff -- ./django/contrib/admindocs/utils.py > patch.txt && cat patch.txt
+27,28,1,1184006334010180,1184006528840693,0,0.0,git checkout HEAD -- ./django/contrib/admindocs/utils.py && sed -i '/indent = min(len(line) - len(line.lstrip()) for line in lines if line.lstrip())/c\    if len(lines) == 1:\\n        return docstring.strip()\\n    non_empty_lines = [line for line in lines[1:] if line.lstrip()]\\n    if not non_empty_lines:\\n        indent = 0\\n    else:\\n        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)' ./django/contrib/admindocs/utils.py
+28,29,1,1184006528844590,1184006716915840,0,0.0,git diff -- ./django/contrib/admindocs/utils.py > patch.txt && cat patch.txt
+29,30,1,1184006716919426,1184006905464700,0,0.0,cp ./django/contrib/admindocs/utils.py ./django/contrib/admindocs/utils.py.tmp && grep -n 'def trim_docstring' ./django/contrib/admindocs/utils.py.tmp && grep -n 'trimmed = \[lines\[0\].lstrip()' ./django/contrib/admindocs/utils.py.tmp
+30,31,1,1184006905471793,1184007083266446,2,2.0,"sed -i '28,37d' ./django/contrib/admindocs/utils.py.tmp && sed -i '27a\\n    if not docstring or not docstring.strip():\n        return ''\n    # Convert tabs to spaces and split into lines\n    lines = docstring.expandtabs().splitlines()\n    \n    # If there\'s only one line, just return it stripped\n    if len(lines) == 1:\n        return docstring.strip()\n    \n    # For multi-line docstrings, calculate indentation from non-empty lines after the first\n    non_empty_lines = [line for line in lines[1:] if line.lstrip()]\n    if not non_empty_lines:\n        indent = 0\n    else:\n        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)' ./django/contrib/admindocs/utils.py.tmp && cat ./django/contrib/admindocs/utils.py.tmp > ./django/contrib/admindocs/utils.py"
+31,32,1,1184007083350008,1184007270785776,0,0.0,"cat > ./django/contrib/admindocs/utils.py.new << 'EOL'
+""""""Misc. utility functions/classes for admin documentation generator.""""""
+
+import re
+from email.errors import HeaderParseError
+from email.parser import HeaderParser
+
+from django.urls import reverse
+from django.utils.regex_helper import _lazy_re_compile
+from django.utils.safestring import mark_safe
+
+try:
+    import docutils.core
+    import docutils.nodes
+    import docutils.parsers.rst.roles
+except ImportError:
+    docutils_is_available = False
+else:
+    docutils_is_available = True
+
+def get_view_name(view_func):
+    mod_name = view_func.__module__
+    view_name = getattr(view_func, '__qualname__', view_func.__class__.__name__)
+    return mod_name + '.' + view_name
+
+def trim_docstring(docstring):
+    """"""
+    Uniformly trim leading/trailing whitespace from docstrings.
+
+    Based on https://www.python.org/dev/peps/pep-0257/#handling-docstring-indentation
+    """"""
+    if not docstring or not docstring.strip():
+        return ''
+    # Convert tabs to spaces and split into lines
+    lines = docstring.expandtabs().splitlines()
+    
+    # If there's only one line, just return it stripped
+    if len(lines) == 1:
+        return docstring.strip()
+    
+    # For multi-line docstrings, calculate indentation from non-empty lines after the first
+    non_empty_lines = [line for line in lines[1:] if line.lstrip()]
+    if not non_empty_lines:
+        indent = 0
+    else:
+        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)
+    
+    # Trim the appropriate amount of indentation from each line
+    trimmed = [lines[0].lstrip()] + [line[indent:].rstrip() for line in lines[1:]]
+    return ""\n"".join(trimmed).strip()
+
+def parse_docstring(docstring):
+    """"""
+    Parse out the parts of a docstring.  Return (title, body, metadata).
+    """"""
+    docstring = trim_docstring(docstring)
+    parts = re.split(r'\n{2,}', docstring)
+    title = parts[0]
+    if len(parts) == 1:
+        body = ''
+        metadata = {}
+    else:
+        parser = HeaderParser()
+        try:
+            metadata = parser.parsestr(parts[-1])
+        except HeaderParseError:
+            metadata = {}
+            body = ""\n\n"".join(parts[1:])
+        else:
+            metadata = dict(metadata.items())
+            if metadata:
+                body = ""\n\n"".join(parts[1:-1])
+            else:
+                body = ""\n\n"".join(parts[1:])
+    return title, body, metadata
+
+
+def parse_rst(text, default_reference_context, thing_being_parsed=None):
+    """"""
+    Convert the string from reST to an XHTML fragment.
+    """"""
+    overrides = {
+        'doctitle_xform': True,
+        'initial_header_level': 3,
+        ""default_reference_context"": default_reference_context,
+        ""link_base"": reverse('django-admindocs-docroot').rstrip('/'),
+        'raw_enabled': False,
+        'file_insertion_enabled': False,
+    }
+    thing_being_parsed = thing_being_parsed and '<%s>' % thing_being_parsed
+    # Wrap ``text`` in some reST that sets the default role to ``cmsreference``,
+    # then restores it.
+    source = """"""
+.. default-role:: cmsreference
+
+%s
+
+.. default-role::
+""""""
+    parts = docutils.core.publish_parts(
+        source % text,
+        source_path=thing_being_parsed, destination_path=None,
+        writer_name='html', settings_overrides=overrides,
+    )
+    return mark_safe(parts['fragment'])
+
+
+#
+# reST roles
+#
+ROLES = {
+    'model': '%s/models/%s/',
+    'view': '%s/views/%s/',
+    'template': '%s/templates/%s/',
+    'filter': '%s/filters/#%s',
+    'tag': '%s/tags/#%s',
+}
+
+
+def create_reference_role(rolename, urlbase):
+    def _role(name, rawtext, text, lineno, inliner, options=None, content=None):
+        if options is None:
+            options = {}
+        node = docutils.nodes.reference(
+            rawtext,
+            text,
+            refuri=(urlbase % (
+                inliner.document.settings.link_base,
+                text.lower(),
+            )),
+            **options
+        )
+        return [node], []
+    docutils.parsers.rst.roles.register_canonical_role(rolename, _role)
+
+
+def default_reference_role(name, rawtext, text, lineno, inliner, options=None, content=None):
+    if options is None:
+        options = {}
+    context = inliner.document.settings.default_reference_context
+    node = docutils.nodes.reference(
+        rawtext,
+        text,
+        refuri=(ROLES[context] % (
+            inliner.document.settings.link_base,
+            text.lower(),
+        )),
+        **options
+    )
+    return [node], []
+
+
+if docutils_is_available:
+    docutils.parsers.rst.roles.register_canonical_role('cmsreference', default_reference_role)
+
+    for name, urlbase in ROLES.items():
+        create_reference_role(name, urlbase)
+
+# Match the beginning of a named or unnamed group.
+named_group_matcher = _lazy_re_compile(r'\(\\?P(<\\w+>)')
+unnamed_group_matcher = _lazy_re_compile(r'\(')
+
+
+def replace_named_groups(pattern):
+    r""""""
+    Find named groups in `pattern` and replace them with the group name. E.g.,
+    1. ^(?P<a>\\w+)/b/(\\w+)$ ==> ^<a>/b/(\\w+)$
+    2. ^(?P<a>\\w+)/b/(?P<c>\\w+)/$ ==> ^<a>/b/<c>/$
+    3. ^(?P<a>\\w+)/b/(\\w+) ==> ^<a>/b/(\\w+)
+    4. ^(?P<a>\\w+)/b/(?P<c>\\w+) ==> ^<a>/b/<c>
+    """"""
+    named_group_indices = [
+        (m.start(0), m.end(0), m.group(1))
+        for m in named_group_matcher.finditer(pattern)
+    ]
+    # Tuples of (named capture group pattern, group name).
+    group_pattern_and_name = []
+    # Loop over the groups and their start and end indices.
+    for start, end, group_name in named_group_indices:
+        # Handle nested parentheses, e.g. '^(?P<a>(x|y))/b'.
+        unmatched_open_brackets, prev_char = 1, None
+        for idx, val in enumerate(pattern[end:]):
+            # Check for unescaped `(` and `)`. They mark the start and end of a
+            # nested group.
+            if val == '(' and prev_char != '\\':
+                unmatched_open_brackets += 1
+            elif val == ')' and prev_char != '\\':
+                unmatched_open_brackets -= 1
+            prev_char = val
+            # If brackets are balanced, the end of the string for the current
+            # named capture group pattern has been reached.
+            if unmatched_open_brackets == 0:
+                group_pattern_and_name.append((pattern[start:end + idx + 1], group_name))
+                break
+
+    # Replace the string for named capture groups with their group names.
+    for group_pattern, group_name in group_pattern_and_name:
+        pattern = pattern.replace(group_pattern, group_name)
+    return pattern
+
+
+def replace_unnamed_groups(pattern):
+    r""""""
+    Find unnamed groups in `pattern` and replace them with '<var>'. E.g.,
+    1. ^(?P<a>\\w+)/b/(\\w+)$ ==> ^(?P<a>\\w+)/b/<var>$
+    2. ^(?P<a>\\w+)/b/((x|y)\\w+)$ ==> ^(?P<a>\\w+)/b/<var>$
+    3. ^(?P<a>\\w+)/b/(\\w+) ==> ^(?P<a>\\w+)/b/<var>
+    4. ^(?P<a>\\w+)/b/((x|y)\\w+) ==> ^(?P<a>\\w+)/b/<var>
+    """"""
+    unnamed_group_indices = [m.start(0) for m in unnamed_group_matcher.finditer(pattern)]
+    # Indices of the start of unnamed capture groups.
+    group_indices = []
+    # Loop over the start indices of the groups.
+    for start in unnamed_group_indices:
+        # Handle nested parentheses, e.g. '^b/((x|y)\\w+)$'.
+        unmatched_open_brackets, prev_char = 1, None
+        for idx, val in enumerate(pattern[start + 1:]):
+            # Check for unescaped `(` and `)`. They mark the start and end of
+            # a nested group.
+            if val == '(' and prev_char != '\\':
+                unmatched_open_brackets += 1
+            elif val == ')' and prev_char != '\\':
+                unmatched_open_brackets -= 1
+            prev_char = val
+
+            if unmatched_open_brackets == 0:
+                group_indices.append((start, start + 2 + idx))
+                break
+    # Remove unnamed group matches inside other unnamed capture groups.
+    group_start_end_indices = []
+    prev_end = None
+    for start, end in group_indices:
+        if prev_end and start > prev_end or not prev_end:
+            group_start_end_indices.append((start, end))
+        prev_end = end
+
+    if group_start_end_indices:
+        # Replace unnamed groups with <var>. Handle the fact that replacing the
+        # string between indices will change string length and thus indices
+        # will point to the wrong substring if not corrected.
+        final_pattern, prev_end = [], None
+        for start, end in group_start_end_indices:
+            if prev_end:
+                final_pattern.append(pattern[prev_end:start])
+            final_pattern.append(pattern[:start] + '<var>')
+            prev_end = end
+        final_pattern.append(pattern[prev_end:])
+        return ''.join(final_pattern)
+    else:
+        return pattern
+EOL"
+32,33,1,1184007270814740,1184007461621236,0,0.0,mv ./django/contrib/admindocs/utils.py.new ./django/contrib/admindocs/utils.py && git diff -- ./django/contrib/admindocs/utils.py > patch.txt && cat patch.txt
+33,34,1,1184007461627438,1184007672477517,0,0.0,"git checkout HEAD -- ./django/contrib/admindocs/utils.py && python -c ""
+import re
+
+# Read the original file
+with open('./django/contrib/admindocs/utils.py', 'r') as f:
+    content = f.read()
+
+# Define the new function body
+new_body = '''    if not docstring or not docstring.strip():
+        return ''
+    # Convert tabs to spaces and split into lines
+    lines = docstring.expandtabs().splitlines()
+    
+    # If there's only one line, just return it stripped
+    if len(lines) == 1:
+        return docstring.strip()
+    
+    # For multi-line docstrings, calculate indentation from non-empty lines after the first
+    non_empty_lines = [line for line in lines[1:] if line.lstrip()]
+    if not non_empty_lines:
+        indent = 0
+    else:
+        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)
+    
+    # Trim the appropriate amount of indentation from each line
+    trimmed = [lines[0].lstrip()] + [line[indent:].rstrip() for line in lines[1:]]
+    return \""\\n\"".join(trimmed).strip()'''
+
+# Find the trim_docstring function
+start_idx = content.find('def trim_docstring(docstring):')
+if start_idx == -1:
+    raise Exception('Could not find trim_docstring function')
+
+# Find the end of the function (next def or end of file)
+end_idx = content.find('def ', start_idx + 1)
+if end_idx == -1:
+    end_idx = len(content)
+
+# Extract the function to find where the body starts
+func_content = content[start_idx:end_idx]
+first_line_end = func_content.find('\n') + start_idx
+second_line_end = content.find('\n', first_line_end + 1)
+
+# Replace the function body
+new_content = content[:second_line_end + 1] + new_body + content[content.find('def ', second_line_end):] if content.find('def ', second_line_end) != -1 else content[:second_line_end + 1] + new_body
+
+# Write the updated content back to the file
+with open('./django/contrib/admindocs/utils.py', 'w') as f:
+    f.write(new_content)
+"""
+34,35,1,1184007672483027,1184007864795272,0,0.0,git diff -- ./django/contrib/admindocs/utils.py > patch.txt && cat patch.txt
+35,36,1,1184007864804700,1184008614273857,0,0.0,"git add ./django/contrib/admindocs/utils.py && git commit -m ""Fix trim_docstring to handle docstrings with non-empty first line"" && git format-patch -1 --stdout > patch.txt && cat patch.txt"
+36,37,1,1184008614348477,1184008793984196,0,0.0,"echo ""diff --git a/django/contrib/admindocs/utils.py b/django/contrib/admindocs/utils.py\nindex 4c0e7e2a56..77f0ddc68f 100644\n--- a/django/contrib/admindocs/utils.py\n+++ b/django/contrib/admindocs/utils.py\n@@ -34,12 +34,21 @@ def trim_docstring(docstring):\n         return ''\n     # Convert tabs to spaces and split into lines\n     lines = docstring.expandtabs().splitlines()\n-    indent = min(len(line) - len(line.lstrip()) for line in lines if line.lstrip())\n+    \n+    # If there's only one line, just return it stripped\n+    if len(lines) == 1:\n+        return docstring.strip()\n+    \n+    # For multi-line docstrings, calculate indentation from non-empty lines after the first\n+    non_empty_lines = [line for line in lines[1:] if line.lstrip()]\n+    if not non_empty_lines:\n+        indent = 0\n+    else:\n+        indent = min(len(line) - len(line.lstrip()) for line in non_empty_lines)\n+    \n+    # Trim the appropriate amount of indentation from each line\n     trimmed = [lines[0].lstrip()] + [line[indent:].rstrip() for line in lines[1:]]\n-    return ""\n"".join(trimmed).strip()\n\n-\n-def parse_docstring(docstring):\n+    return ""\n"".join(trimmed).strip()def parse_docstring(docstring):\n     \""\""\""\n     Parse out the parts of a docstring.  Return (title, body, metadata).\n     \""\""\"""" > patch.txt && cat patch.txt"
+37,38,1,1184008793996409,1184008981892858,0,0.0,"git diff -- ./django/contrib/admindocs/utils.py > patch.txt && sed -i 's/""\n""/""\\n""/g' patch.txt && cat patch.txt"
+38,39,1,1184008981962418,1184009161676619,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

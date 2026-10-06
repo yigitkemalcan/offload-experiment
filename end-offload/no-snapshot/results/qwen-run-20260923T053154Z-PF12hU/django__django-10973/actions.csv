@@ -1,0 +1,60 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1183151936754841,1183152659200947,0,0.0,"find . -type f -name ""client.py"" | grep -i postgres"
+1,1,2,1183152659229520,1183152961551043,0,0.0,"find . -type f -path ""*/postgres/*client*.py"""
+2,2,1,1183152961557746,1183153150375921,0,0.0,cat django/db/backends/postgresql/client.py
+3,3,1,1183153150385138,1183153338292113,0,0.0,"cat > django/db/backends/postgresql/client.py << 'EOL'
+import os
+import signal
+import subprocess
+
+from django.core.files.temp import NamedTemporaryFile
+from django.db.backends.base.client import BaseDatabaseClient
+
+
+def _escape_pgpass(txt):
+    """"""
+    Escape a fragment of a PostgreSQL .pgpass file.
+    """"""
+    return txt.replace('\\', '\\\\').replace(':', '\\:')
+
+class DatabaseClient(BaseDatabaseClient):
+    executable_name = 'psql'
+
+    @classmethod
+    def runshell_db(cls, conn_params):
+        args = [cls.executable_name]
+
+        host = conn_params.get('host', '')
+        port = conn_params.get('port', '')
+        dbname = conn_params.get('database', '')
+        user = conn_params.get('user', '')
+        passwd = conn_params.get('password', '')
+
+        if user:
+            args += ['-U', user]
+        if host:
+            args += ['-h', host]
+        if port:
+            args += ['-p', str(port)]
+        args += [dbname]
+
+        # Create a copy of the environment and add PGPASSWORD if needed
+        env = os.environ.copy()
+        if passwd:
+            env['PGPASSWORD'] = passwd
+
+        # Allow SIGINT to pass to psql to abort queries
+        sigint_handler = signal.getsignal(signal.SIGINT)
+        try:
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            subprocess.run(args, env=env, check=True)
+        finally:
+            # Restore the original SIGINT handler
+            signal.signal(signal.SIGINT, sigint_handler)
+
+    def runshell(self):
+        DatabaseClient.runshell_db(self.connection.get_connection_params())
+EOL"
+4,4,1,1183153338301190,1183153541322711,0,0.0,git diff -- django/db/backends/postgresql/client.py > patch.txt
+5,5,1,1183153541328662,1183153725470433,0,0.0,cat patch.txt
+6,7,1,1183153725479510,1183153911518067,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

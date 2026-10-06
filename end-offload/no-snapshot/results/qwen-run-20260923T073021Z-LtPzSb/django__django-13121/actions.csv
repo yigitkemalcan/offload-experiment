@@ -1,0 +1,229 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1184534539869327,1184535262875269,0,0.0,"find . -type f -name ""*.py"" | grep -i duration"
+1,1,2,1184535262890357,1184535558838508,0,0.0,"find . -type f -name ""*.py"" | grep -i operations"
+2,1,3,1184535558851042,1184535863544506,0,0.0,"find . -type f -name ""*.py"" | grep -i backend"
+3,2,1,1184535863551930,1184536048183013,0,0.0,"cat django/db/backends/base/operations.py | grep -A 20 ""convert_durationfield_value"""
+4,3,1,1184536048193543,1184536239400006,0,0.0,"grep -r ""convert_durationfield_value"" django/db/backends/ | grep -v ""timedelta"""
+5,4,1,1184536239414302,1184536424940822,0,0.0,"grep -A 15 ""convert_durationfield_value"" django/db/backends/base/operations.py"
+6,5,1,1184536424947804,1184536614440645,0,0.0,"grep -r ""convert_durationfield_value"" django/db/backends/*/operations.py"
+7,6,1,1184536614513771,1184536797046280,0,0.0,"echo ""from django.db import models
+from django.db.models import F
+import datetime
+
+class Experiment(models.Model):
+    estimated_time = models.DurationField()
+    
+    class Meta:
+        app_label = 'test_app'
+
+delta = datetime.timedelta(days=1)
+
+# This should reproduce the issue
+try:
+    result = list(Experiment.objects.annotate(duration=F('estimated_time') + delta))
+    print('Success:', result)
+except Exception as e:
+    print(f'Error: {type(e).__name__}: {e}')
+    import traceback
+    traceback.print_exc()"" > reproduce_issue.py"
+8,7,1,1184536797051580,1184537414187471,0,0.0,"find . -type f -name ""*.py"" | xargs grep -l ""class DurationField"""
+9,8,1,1184537414201417,1184537602585701,0,0.0,"grep -A 20 ""class DurationField"" django/db/models/fields/__init__.py"
+10,9,1,1184537602597915,1184537962894484,0,0.0,"find . -type f -name ""*.py"" | xargs grep -l ""DurationField"" | xargs grep -l ""F("""
+11,10,1,1184537962902530,1184538148021240,1,1.0,"grep -A 10 -B 10 ""F("" django/db/models/expressions.py | grep -A 20 ""class DurationField"""
+12,11,1,1184538148026320,1184538328934237,0,0.0,"cat django/db/models/fields/__init__.py | grep -A 50 ""class DurationField"" | head -50"
+13,12,1,1184538328940358,1184538513008832,0,0.0,"grep -r ""has_native_duration_field"" django/db/backends/"
+14,13,1,1184538513022337,1184538703325725,0,0.0,"grep -r ""decimal.Decimal"" django/db/backends/base/operations.py"
+15,14,1,1184538703397855,1184539066405626,0,0.0,"find . -type f -name ""*.py"" | xargs grep -l ""convert_durationfield_value"" | xargs grep -A 10 ""def convert_durationfield_value"""
+16,15,1,1184539066422147,1184539251774885,0,0.0,"cat django/db/backends/base/operations.py | grep -A 30 ""convert_durationfield_value"""
+17,16,1,1184539251787920,1184539437892616,0,0.0,"grep -r ""DurationField"" django/db/models/expressions.py"
+18,17,1,1184539437985024,1184539620759155,1,1.0,"cat django/db/models/expressions.py | grep -A 10 -B 10 ""DurationField"" | grep -A 20 ""def __add__"""
+19,18,1,1184539620763313,1184539807711629,0,0.0,"grep -A 30 ""class Value"" django/db/models/expressions.py"
+20,19,1,1184539807743689,1184539989002959,0,0.0,"grep -r ""combine_duration_expression"" django/db/backends/"
+21,20,1,1184539989012947,1184540179533016,0,0.0,"cat django/db/backends/base/operations.py | grep -A 15 ""combine_duration_expression"""
+22,21,1,1184540179537544,1184540366906939,0,0.0,"cat django/db/backends/sqlite3/operations.py | grep -A 15 ""combine_duration_expression"""
+23,22,1,1184540366912219,1184540549147541,1,1.0,"cat django/db/backends/mysql/operations.py | grep -A 15 ""combine_duration_expression"""
+24,23,1,1184540549151328,1184540733293841,0,0.0,"grep -r ""duration"" django/db/backends/mysql/operations.py"
+25,24,1,1184540733296566,1184540913630018,0,0.0,"cat django/db/backends/mysql/operations.py | grep -A 5 -B 5 ""format_for_duration_arithmetic"""
+26,25,1,1184540913637882,1184541109305423,0,0.0,"find django/db/backends/ -path ""*/operations.py"" -exec grep -l ""convert_durationfield_value"" {} \;"
+27,26,1,1184541109370755,1184541294801109,0,0.0,"echo ""import django
+from django.conf import settings
+import sys
+
+# Configure Django settings if not already configured
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            'django.contrib.auth',
+        ],
+        USE_TZ=True,
+    )
+
+django.setup()
+
+from django.db import models
+from django.db.models import F
+import datetime
+
+class Experiment(models.Model):
+    estimated_time = models.DurationField()
+    
+    class Meta:
+        app_label = 'test_app'
+        managed = False  # Don't create actual tables for this test
+
+delta = datetime.timedelta(days=1)
+
+# Try to reproduce the issue
+try:
+    # Create a mock query that would trigger the conversion
+    print('Trying to create annotation with duration expression...')
+    annotation = F('estimated_time') + delta
+    print('Annotation created:', annotation)
+    
+    # This would normally trigger the conversion when executed
+    # The error occurs when trying to convert the database value
+    print('Note: In a real query, this would fail during database fetch')
+    
+except Exception as e:
+    print(f'Error: {type(e).__name__}: {e}')
+    import traceback
+    traceback.print_exc()"" > reproduce_issue.py"
+28,28,1,1184541294808713,1184541950939686,1,1.0,"grep -r ""duration.*Decimal"" django/"
+29,29,1,1184541950945467,1184542289836030,1,1.0,"grep -r ""Decimal.*duration"" django/"
+30,30,1,1184542289842703,1184542470697200,0,0.0,cat django/utils/duration.py
+31,31,1,1184542470711997,1184542752248683,1,1.0,"find django/db/backends/ -name ""*.py"" -exec grep -l ""def convert_durationfield_value"" {} \; | grep -v ""base/"""
+32,32,1,1184542752263030,1184542936454940,0,0.0,"cat django/db/backends/base/operations.py | grep -B 5 -A 20 ""convert_durationfield_value"""
+33,33,1,1184542936529114,1184543122361701,0,0.0,"sed -i '/def convert_durationfield_value/,/return/ c\    def convert_durationfield_value(self, value, expression, connection):\n        if value is not None:\n            try:\n                return datetime.timedelta(microseconds=int(value))\n            except (TypeError, ValueError):\n                return None' django/db/backends/base/operations.py"
+34,34,1,1184543122371850,1184543306675147,0,0.0,"echo ""import django
+from django.conf import settings
+import sys
+
+# Configure Django settings if not already configured
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            'django.contrib.auth',
+        ],
+        USE_TZ=True,
+    )
+
+django.setup()
+
+from django.db import models
+from django.db.models import F
+import datetime
+
+class Experiment(models.Model):
+    estimated_time = models.DurationField()
+    
+    class Meta:
+        app_label = 'test_app'
+        managed = False  # Don't create actual tables for this test
+
+delta = datetime.timedelta(days=1)
+
+# Try to reproduce the issue
+try:
+    # Create a mock query that would trigger the conversion
+    print('Trying to create annotation with duration expression...')
+    annotation = F('estimated_time') + delta
+    print('Annotation created:', annotation)
+    
+    # Simulate what happens when a value is retrieved from the database
+    from django.db.backends.base.operations import BaseDatabaseOperations
+    ops = BaseDatabaseOperations()
+    
+    # Test with different value types
+    test_values = [1000000, '1000000', None, 'invalid']
+    for val in test_values:
+        try:
+            result = ops.convert_durationfield_value(val, None, None)
+            print(f'convert_durationfield_value({val}) = {result}')
+        except Exception as e:
+            print(f'convert_durationfield_value({val}) raised {type(e).__name__}: {e}')
+            
+except Exception as e:
+    print(f'Error: {type(e).__name__}: {e}')
+    import traceback
+    traceback.print_exc()"" > test_fix.py"
+35,35,1,1184543306681699,1184544128441546,0,0.0,python test_fix.py
+36,36,1,1184544128448098,1184544314534075,0,0.0,"echo ""import django
+from django.conf import settings
+from django.db import connection
+import sys
+
+# Configure Django settings if not already configured
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            'django.contrib.auth',
+        ],
+        USE_TZ=True,
+    )
+
+django.setup()
+
+from django.db import models
+from django.db.models import F
+import datetime
+
+class Experiment(models.Model):
+    estimated_time = models.DurationField()
+    
+    class Meta:
+        app_label = 'test_app'
+        managed = False  # Don't create actual tables for this test
+
+delta = datetime.timedelta(days=1)
+
+# Try to reproduce the issue
+try:
+    # Create a mock query that would trigger the conversion
+    print('Trying to create annotation with duration expression...')
+    annotation = F('estimated_time') + delta
+    print('Annotation created:', annotation)
+    
+    # Get the database operations instance
+    ops = connection.ops
+    
+    # Test with different value types
+    test_values = [1000000, '1000000', None, 'invalid']
+    for val in test_values:
+        try:
+            result = ops.convert_durationfield_value(val, None, connection)
+            print(f'convert_durationfield_value({val}) = {result}')
+        except Exception as e:
+            print(f'convert_durationfield_value({val}) raised {type(e).__name__}: {e}')
+            
+except Exception as e:
+    print(f'Error: {type(e).__name__}: {e}')
+    import traceback
+    traceback.print_exc()"" > test_fix.py"
+37,37,1,1184544314541329,1184544789423980,0,0.0,python test_fix.py
+38,38,1,1184544789427838,1184544983698628,0,0.0,git diff -- django/db/backends/base/operations.py > patch.txt
+39,39,1,1184544983701834,1184545167914544,0,0.0,cat patch.txt
+40,40,1,1184545167924242,1184545354416890,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

@@ -1,0 +1,54 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1182748481537986,1182748791493391,0,0.0,"find . -type f -name ""*.py"" | grep -v ""__pycache__"" | grep -v ""\.pyc$"""
+1,2,1,1182748791501275,1182749150659989,0,0.0,"find . -type f -name ""*.py"" | xargs grep -l ""NdarrayMixin"""
+2,3,1,1182749150663235,1182749333380050,0,0.0,"grep -n ""Structured ndarray gets viewed as a mixin"" ./astropy/table/table.py"
+3,4,1,1182749333400748,1182749514103750,0,0.0,"sed -n '1235,1250p' ./astropy/table/table.py"
+4,5,1,1182749514112146,1182749693666392,0,0.0,cat ./astropy/table/ndarray_mixin.py
+5,6,1,1182749693676150,1182749878999107,0,0.0,"sed -i '1242,1246c\        # Structured ndarray gets viewed as a mixin unless already a valid\n        # mixin class\n        if (not isinstance(data, Column) and not data_is_mixin\n                and isinstance(data, np.ndarray) and len(data.dtype) > 1):\n            import warnings\n            warnings.warn(\""Structured arrays will be added as Column objects in the future instead of NdarrayMixin. ""\n                          \""Wrap your data in Column to avoid this warning and ensure compatibility."",\n                          FutureWarning, stacklevel=2)\n            data = data.view(NdarrayMixin)\n            data_is_mixin = True' ./astropy/table/table.py"
+6,7,1,1182749879026839,1182750063794742,0,0.0,"sed -n '1240,1250p' ./astropy/table/table.py"
+7,8,1,1182750063805202,1182750264744418,0,0.0,git diff -- astropy/table/table.py > patch.txt
+8,9,1,1182750264754337,1182750448798526,0,0.0,cat patch.txt
+9,10,1,1182750448886641,1182750648854113,0,0.0,"git checkout astropy/table/table.py && sed -i '1242,1246c\        # Structured ndarray gets viewed as a mixin unless already a valid\n        # mixin class\n        if (not isinstance(data, Column) and not data_is_mixin\n                and isinstance(data, np.ndarray) and len(data.dtype) > 1):\n            import warnings\n            warnings.warn(\""Structured arrays will be added as Column objects in the future instead of NdarrayMixin. ""\n                          \""Wrap your data in Column to avoid this warning and ensure compatibility."",\n                          FutureWarning, stacklevel=2)\n            data = data.view(NdarrayMixin)\n            data_is_mixin = True' ./astropy/table/table.py && git diff -- astropy/table/table.py > patch.txt"
+10,11,1,1182750648864102,1182750836259623,0,0.0,cat patch.txt
+11,12,1,1182750836266285,1182751026394239,1,1.0,"git checkout astropy/table/table.py && sed -i '/# Structured ndarray gets viewed as a mixin/,+5 {\n/^[ \t]*data = data.view(NdarrayMixin)/i \\            import warnings\\
+            warnings.warn(""Structured arrays will be added as Column objects in the future instead of NdarrayMixin. ""\
+                          ""Wrap your data in Column to avoid this warning and ensure compatibility."",\
+                          FutureWarning, stacklevel=2)
+}' ./astropy/table/table.py && git diff -- astropy/table/table.py > patch.txt"
+12,13,1,1182751026405280,1182751511219723,0,0.0,"git checkout astropy/table/table.py && cat > temp_patch.py << 'EOL'
+#!/usr/bin/env python3
+import fileinput
+
+lines = []
+with fileinput.input(files=['astropy/table/table.py'], inplace=True) as f:
+    for line in f:
+        lines.append(line)
+        if '# Structured ndarray gets viewed as a mixin' in line:
+            # Find the complete if block
+            for i, next_line in enumerate(lines[-1:], 1):
+                if 'data = data.view(NdarrayMixin)' in next_line:
+                    # Insert warning before the view operation
+                    indent = '        '
+                    lines[-1-i] = lines[-1-i].rstrip() + '\n' + \
+                        indent + 'import warnings\n' + \
+                        indent + 'warnings.warn(""Structured arrays will be added as Column objects in the future instead of NdarrayMixin. ""\
+' + \
+                        indent + '              ""Wrap your data in Column to avoid this warning and ensure compatibility."",\
+' + \
+                        indent + '              FutureWarning, stacklevel=2)\n'
+                    break
+
+# Write the modified content back to the file
+with open('astropy/table/table.py', 'w') as f:
+    f.writelines(lines)
+EOL
+
+python3 temp_patch.py && rm temp_patch.py && git diff -- astropy/table/table.py > patch.txt"
+13,14,1,1182751511229080,1182751710607235,0,0.0,"git checkout astropy/table/table.py && sed -i '/# Structured ndarray gets viewed as a mixin/,/data_is_mixin = True/ { /data = data.view(NdarrayMixin)/i \
+            import warnings\n            warnings.warn(""Structured arrays will be added as Column objects in the future instead of NdarrayMixin. ""\
+                          ""Wrap your data in Column to avoid this warning and ensure compatibility."",\
+                          FutureWarning, stacklevel=2)
+}' ./astropy/table/table.py && git diff -- astropy/table/table.py > patch.txt"
+14,15,1,1182751710610191,1182751895964872,0,0.0,"grep -A 10 ""Structured ndarray gets viewed as a mixin"" ./astropy/table/table.py"
+15,16,1,1182751895974770,1182752087675177,0,0.0,git diff -- astropy/table/table.py > patch.txt && cat patch.txt
+16,17,1,1182752087679104,1182752267354888,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

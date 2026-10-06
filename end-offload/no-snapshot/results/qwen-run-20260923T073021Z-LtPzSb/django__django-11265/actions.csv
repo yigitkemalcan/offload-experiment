@@ -1,0 +1,68 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1183393424396361,1183394160163113,0,0,"find /testbed -type f -name ""query.py"" | grep -v ""__pycache__"""
+1,2,1,1183394160207826,1183405757600002,0,0,"find /testbed -type f -exec grep -l ""FilteredRelation"" {} \; | grep -v ""__pycache__"""
+2,3,1,1183405757615622,1183405944853929,0,0,"grep -n ""class FilteredRelation"" /testbed/django/db/models/query_utils.py -A 20"
+3,4,1,1183405944863477,1183406127727173,0,0,"grep -n ""def split_exclude"" /testbed/django/db/models/sql/query.py -A 20"
+4,5,1,1183406127732433,1183406311437139,0,0,"grep -n ""def build_filter"" /testbed/django/db/models/sql/query.py -A 10"
+5,6,1,1183406311447629,1183406496782918,0,0,"grep -n ""def solve_lookup_type"" /testbed/django/db/models/sql/query.py -A 10"
+6,7,1,1183406496790382,1183406685865648,0,0,"grep -n ""def names_to_path"" /testbed/django/db/models/sql/query.py -A 15"
+7,8,1,1183406685870567,1183406870037359,0,0,"grep -n ""FilteredRelation"" /testbed/django/db/models/sql/query.py | head -20"
+8,9,1,1183406870046696,1183407052762435,0,0,"grep -n ""def build_filtered_relation_q"" /testbed/django/db/models/sql/query.py -A 30"
+9,10,1,1183407052773345,1183407234620669,0,0,"grep -n ""def add_filtered_relation"" /testbed/django/db/models/sql/query.py -A 20"
+10,11,1,1183407234634144,1183407421327871,0,0,"grep -n ""_filtered_relations"" /testbed/django/db/models/sql/query.py"
+11,12,1,1183407421344453,1183407607769066,0,0,"grep -n ""def names_to_path"" /testbed/django/db/models/sql/query.py -A 50"
+12,13,1,1183407607772573,1183407792789220,0,0,"grep -n ""def split_exclude"" /testbed/django/db/models/sql/query.py -A 50"
+13,14,1,1183407792792566,1183407977551321,0,0,"grep -n ""class Query"" /testbed/django/db/models/sql/query.py -A 10"
+14,15,1,1183407977555459,1183408162886224,1,1,"grep -n ""def __init__"" /testbed/django/db/models/sql/query.py | grep -A 5 ""class Query"""
+15,16,1,1183408162889731,1183408351073378,1,1,"grep -A 30 ""def __init__"" /testbed/django/db/models/sql/query.py | grep -B 30 ""class Query"""
+16,17,1,1183408351077375,1183408539393029,0,0,"grep -n -A 50 ""class Query"" /testbed/django/db/models/sql/query.py | grep -A 20 ""def __init__"""
+17,18,1,1183408539418807,1183408724977740,0,0,"grep -n ""def clone"" /testbed/django/db/models/sql/query.py"
+18,19,1,1183408724985004,1183408909067864,0,0,"grep -n -A 30 ""def clone"" /testbed/django/db/models/sql/query.py | grep -B 5 ""def clone"""
+19,20,1,1183408909071330,1183409098645751,0,0,"grep -n -A 50 ""def clone"" /testbed/django/db/models/sql/query.py | grep -A 20 ""class Query"""
+20,21,1,1183409098654106,1183409286479823,0,0,"grep -n -A 100 ""def clone"" /testbed/django/db/models/sql/query.py | grep -A 50 ""obj.__dict__ = self.__dict__.copy()"""
+21,22,1,1183409286497686,1183409469836012,0,0,"grep -n -A 20 ""query = Query"" /testbed/django/db/models/sql/query.py"
+22,23,1,1183409469843626,1183409656095916,0,0,"grep -n -A 10 ""def split_exclude"" /testbed/django/db/models/sql/query.py | head -30"
+23,24,1,1183409656119651,1183409847438408,0,0,"mkdir -p /testbed/reproduction && cat > /testbed/reproduction/test_filtered_relation_exclude.py << 'EOL'
+# Script to reproduce the FilteredRelation exclude issue
+from django.db import models
+from django.db.models import Q, FilteredRelation
+
+class Book(models.Model):
+    title = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.title
+
+class Author(models.Model):
+    name = models.CharField(max_length=100)
+    books = models.ManyToManyField(Book, related_name='authors')
+
+    def __str__(self):
+        return self.name
+
+# Create test data
+author1 = Author.objects.create(name='Author 1')
+author2 = Author.objects.create(name='Author 2')
+
+book1 = Book.objects.create(title='Poem by Alice')
+book2 = Book.objects.create(title='Another Book')
+
+author1.books.add(book1)
+author2.books.add(book2)
+
+# This works
+result1 = Author.objects.annotate(
+    book_alice=FilteredRelation('books', condition=Q(books__title__iexact='poem by alice'))
+).filter(book_alice__isnull=False)
+
+print(f""Filter result: {list(result1)}"")
+
+# This should work but currently fails
+try:
+    result2 = Author.objects.annotate(
+        book_alice=FilteredRelation('books', condition=Q(books__title__iexact='poem by alice'))
+    ).exclude(book_alice__isnull=False)
+    print(f""Exclude result: {list(result2)}"")
+except Exception as e:
+    print(f""Error: {type(e).__name__}: {e}"")
+EOL"

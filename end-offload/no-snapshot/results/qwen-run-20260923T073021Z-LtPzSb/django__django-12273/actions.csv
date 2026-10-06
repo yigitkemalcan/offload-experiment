@@ -1,0 +1,93 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,2,1,1184096372814160,1184096644626441,0,0.0,ls -la
+1,3,1,1184096644638493,1184096837015983,0,0.0,ls -la django/db/models/
+2,4,1,1184096837102570,1184097026998560,0,0.0,"grep -n ""class Model"" django/db/models/base.py"
+3,5,1,1184097027011435,1184097212056956,0,0.0,"grep -n ""def save"" django/db/models/base.py | head -10"
+4,6,1,1184097212067325,1184097398212199,0,0.0,"sed -n '660,700p' django/db/models/base.py"
+5,7,1,1184097398220094,1184097580877646,0,0.0,"sed -n '700,750p' django/db/models/base.py"
+6,8,1,1184097580890590,1184097767158579,0,0.0,"sed -n '750,800p' django/db/models/base.py"
+7,9,1,1184097767169610,1184097948386681,0,0.0,"grep -n ""def _save_table"" django/db/models/base.py"
+8,10,1,1184097948453506,1184098128836154,0,0.0,"sed -n '829,880p' django/db/models/base.py"
+9,11,1,1184098128844920,1184098315931467,0,0.0,"sed -n '880,930p' django/db/models/base.py"
+10,12,1,1184098315943149,1184098501572894,0,0.0,"grep -n ""def _get_pk_val"" django/db/models/base.py"
+11,13,1,1184098501581850,1184098686523528,0,0.0,"sed -n '567,575p' django/db/models/base.py"
+12,14,1,1184098686532464,1184098869947579,0,0.0,"grep -n ""def get_pk_value_on_save"" django/db/models/fields/__init__.py"
+13,15,1,1184098869957097,1184099052984877,0,0.0,"sed -n '565,575p' django/db/models/fields/__init__.py"
+14,16,1,1184099052991970,1184099235670811,0,0.0,"grep -n ""_save_parents"" django/db/models/base.py"
+15,17,1,1184099235681341,1184099422433632,0,0.0,"sed -n '801,829p' django/db/models/base.py"
+16,18,1,1184099422439553,1184099610845389,0,0.0,"cp django/db/models/base.py django/db/models/base.py.bak && sed -i '829,840c\    def _save_table(self, raw=False, cls=None, force_insert=False,\
+                    force_update=False, using=None, update_fields=None):\
+        """"""\
+        Do the heavy-lifting involved in saving. Update or insert the data\
+        for a single table.\
+        """"""\
+        meta = cls._meta\
+        non_pks = [f for f in meta.local_concrete_fields if not f.primary_key]\
+\
+        if update_fields:\
+            non_pks = [f for f in non_pks\
+                       if f.name in update_fields or f.attname in update_fields]\
+\
+        pk_val = self._get_pk_val(meta)\
+        # For inherited models, preserve the parent PK value when resetting\
+        if pk_val is None and meta.parents and not force_insert:\
+            # Get the parent PK value\
+            parent_pk_val = None\
+            for parent, field in meta.parents.items():\
+                parent_pk_val = getattr(self, parent._meta.pk.attname, None)\
+                if parent_pk_val is not None:\
+                    break\
+            if parent_pk_val is not None:\
+                pk_val = parent_pk_val\
+                setattr(self, meta.pk.attname, pk_val)\
+        if pk_val is None:\
+            pk_val = meta.pk.get_pk_value_on_save(self)\
+            setattr(self, meta.pk.attname, pk_val)' django/db/models/base.py"
+17,19,1,1184099610852643,1184099814036840,0,0.0,git diff -- django/db/models/base.py > patch.txt
+18,20,1,1184099814040757,1184099998920673,0,0.0,cat patch.txt
+19,21,1,1184099998936964,1184100185814730,0,0.0,"cp django/db/models/base.py.bak django/db/models/base.py && sed -i '839,840d' django/db/models/base.py && sed -i '839i\\        pk_val = self._get_pk_val(meta)\\        # For inherited models, preserve the parent PK value when resetting\\        if pk_val is None and meta.parents and not force_insert:\\            # Get the parent PK value\\            parent_pk_val = None\\            for parent, field in meta.parents.items():\\                parent_pk_val = getattr(self, parent._meta.pk.attname, None)\\                if parent_pk_val is not None:\\                    break\\            if parent_pk_val is not None:\\                pk_val = parent_pk_val\\                setattr(self, meta.pk.attname, pk_val)\\        if pk_val is None:\\            pk_val = meta.pk.get_pk_value_on_save(self)\\            setattr(self, meta.pk.attname, pk_val)' django/db/models/base.py"
+20,22,1,1184100185822254,1184100374073631,0,0.0,git diff -- django/db/models/base.py > patch.txt
+21,23,1,1184100374083329,1184100554848924,0,0.0,cat patch.txt
+22,24,1,1184100554866197,1184100739287074,1,1.0,diff -u django/db/models/base.py.bak django/db/models/base.py > patch.txt
+23,25,1,1184100739295790,1184100925728232,0,0.0,md5sum django/db/models/base.py django/db/models/base.py.bak
+24,26,1,1184100925737229,1184101132900565,0,0.0,git add django/db/models/base.py && git diff --cached > patch.txt
+25,27,1,1184101132916175,1184101312766897,0,0.0,cat patch.txt
+26,28,1,1184101312783358,1184101503072965,0,0.0,"cp django/db/models/base.py.bak django/db/models/base.py && cat > django/db/models/base.py.patch << 'EOL'
+diff --git a/django/db/models/base.py b/django/db/models/base.py
+index 844c01e95e..4e75b23628 100644
+--- a/django/db/models/base.py
++++ b/django/db/models/base.py
+@@ -836,8 +836,24 @@ class Model(metaclass=ModelBase):
+         non_pks = [f for f in meta.local_concrete_fields if not f.primary_key]
+ 
+         if update_fields:
+-            non_pks = [f for f in non_pks
+-                       if f.name in update_fields or f.attname in update_fields]
++            non_pks = [f for f in non_pks
++                       if f.name in update_fields or f.attname in update_fields]
++
++        pk_val = self._get_pk_val(meta)
++        # For inherited models, preserve the parent PK value when resetting
++        if pk_val is None and meta.parents and not force_insert:
++            # Get the parent PK value
++            parent_pk_val = None
++            for parent, field in meta.parents.items():
++                parent_pk_val = getattr(self, parent._meta.pk.attname, None)
++                if parent_pk_val is not None:
++                    break
++            if parent_pk_val is not None:
++                pk_val = parent_pk_val
++                setattr(self, meta.pk.attname, pk_val)
++        if pk_val is None:
++            pk_val = meta.pk.get_pk_value_on_save(self)
++            setattr(self, meta.pk.attname, pk_val)
+ 
+         pk_val = self._get_pk_val(meta)
+         if pk_val is None:
+EOL
+
+# Apply the patch
+patch -p1 < django/db/models/base.py.patch"
+27,29,1,1184101503089867,1184101693138878,0,0.0,git diff -- django/db/models/base.py > patch.txt
+28,30,1,1184101693156210,1184101875508010,0,0.0,cat patch.txt
+29,31,1,1184101875514612,1184102063285199,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

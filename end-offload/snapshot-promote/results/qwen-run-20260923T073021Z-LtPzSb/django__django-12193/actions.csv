@@ -1,0 +1,897 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1185834749257537,1185835805318517,0,0.0,"find . -type f -name ""*.py"" | grep -v ""__pycache__"" | xargs grep -l ""SplitArrayField"""
+1,1,2,1185835805332443,1185836177904022,0,0.0,"find . -type f -name ""*.py"" | grep -v ""__pycache__"" | xargs grep -l ""CheckboxInput"""
+2,2,1,1185836177915383,1185836364775375,0,0.0,cat ./django/contrib/postgres/forms/array.py
+3,2,2,1185836364785194,1185836551563493,0,0.0,"cat ./django/forms/widgets.py | grep -A 20 ""class CheckboxInput"""
+4,3,1,1185836551571578,1185836739404060,0,0.0,"cat ./django/forms/widgets.py | grep -A 50 ""def get_context"" | grep -B 50 ""class ChoiceWidget"""
+5,4,1,1185836739412406,1185836926443899,0,0.0,"cat ./django/forms/widgets.py | grep -A 10 ""def boolean_check"""
+6,5,1,1185836926454559,1185837108966585,0,0.0,"cat > reproduce_issue.py << 'EOL'
+from django.contrib.postgres.forms.array import SplitArrayField, SplitArrayWidget
+from django import forms
+
+class TestForm(forms.Form):
+    bool_array = SplitArrayField(
+        base_field=forms.BooleanField(),
+        size=3,
+    )
+
+data = [True, False, False]
+form = TestForm({'bool_array_0': 'on', 'bool_array_1': '', 'bool_array_2': ''})
+form.is_valid()  # This should be True
+
+# Get the widget context to see the checked state
+widget = form.fields['bool_array'].widget
+context = widget.get_context('bool_array', data, {})
+
+for i, subwidget in enumerate(context['widget']['subwidgets']):
+    print(f""Widget {i} checked: {subwidget.get('attrs', {}).get('checked')}"")
+EOL"
+7,6,1,1185837108970502,1185837574934854,1,1.0,python reproduce_issue.py
+8,7,1,1185837574938231,1185840200712552,0,0.0,pip install psycopg2-binary
+9,8,1,1185840200720196,1185840567127662,1,1.0,python reproduce_issue.py
+10,9,1,1185840567136949,1185840749948222,0,0.0,"cat > reproduce_issue.py << 'EOL'
+import django
+from django.conf import settings
+from django.contrib.postgres.forms.array import SplitArrayField, SplitArrayWidget
+from django import forms
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        USE_TZ=True,
+        USE_I18N=True,
+        LANGUAGE_CODE='en-us',
+        INSTALLED_APPS=[],
+        TEMPLATES=[{
+            'BACKEND': 'django.template.backends.django.DjangoTemplates',
+            'DIRS': [],
+            'APP_DIRS': True,
+        }]
+    )
+django.setup()
+
+class TestForm(forms.Form):
+    bool_array = SplitArrayField(
+        base_field=forms.BooleanField(),
+        size=3,
+    )
+
+data = [True, False, False]
+form = TestForm({'bool_array_0': 'on', 'bool_array_1': '', 'bool_array_2': ''})
+form.is_valid()  # This should be True
+
+# Get the widget context to see the checked state
+widget = form.fields['bool_array'].widget
+context = widget.get_context('bool_array', data, {})
+
+for i, subwidget in enumerate(context['widget']['subwidgets']):
+    print(f""Widget {i} checked: {subwidget.get('attrs', {}).get('checked')}"")
+EOL"
+11,10,1,1185840749953392,1185841346448425,0,0.0,python reproduce_issue.py
+12,11,1,1185841346455248,1185841535494592,0,0.0,"cp ./django/contrib/postgres/forms/array.py ./django/contrib/postgres/forms/array.py.bak && sed -i '/final_attrs = {\*\*final_attrs, \""id\"": '%s_%s' % (id_, i)}/a \            final_attrs = final_attrs.copy()' ./django/contrib/postgres/forms/array.py"
+13,12,1,1185841535498799,1185841723587113,0,0.0,diff ./django/contrib/postgres/forms/array.py.bak ./django/contrib/postgres/forms/array.py
+14,13,1,1185841723589818,1185841907102860,0,0.0,"grep -A 5 ""final_attrs = {\\*\\*final_attrs"" ./django/contrib/postgres/forms/array.py"
+15,14,1,1185841907110444,1185842089378437,0,0.0,"cat > temp_array.py << 'EOL'
+import copy
+from itertools import chain
+
+from django import forms
+from django.contrib.postgres.validators import (
+    ArrayMaxLengthValidator, ArrayMinLengthValidator,
+)
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
+
+from ..utils import prefix_validation_error
+
+
+class SimpleArrayField(forms.CharField):
+    default_error_messages = {
+        'item_invalid': _('Item %(nth)s in the array did not validate:'),
+    }
+
+    def __init__(self, base_field, *, delimiter=',', max_length=None, min_length=None, **kwargs):
+        self.base_field = base_field
+        self.delimiter = delimiter
+        super().__init__(**kwargs)
+        if min_length is not None:
+            self.min_length = min_length
+            self.validators.append(ArrayMinLengthValidator(int(min_length)))
+        if max_length is not None:
+            self.max_length = max_length
+            self.validators.append(ArrayMaxLengthValidator(int(max_length)))
+
+    def clean(self, value):
+        value = super().clean(value)
+        return [self.base_field.clean(val) for val in value]
+
+    def prepare_value(self, value):
+        if isinstance(value, list):
+            return self.delimiter.join(str(self.base_field.prepare_value(v)) for v in value)
+        return value
+
+    def to_python(self, value):
+        if isinstance(value, list):
+            items = value
+        elif value:
+            items = value.split(self.delimiter)
+        else:
+            items = []
+        errors = []
+        values = []
+        for index, item in enumerate(items):
+            try:
+                values.append(self.base_field.to_python(item))
+            except ValidationError as error:
+                errors.append(prefix_validation_error(
+                    error,
+                    prefix=self.error_messages['item_invalid'],
+                    code='item_invalid',
+                    params={'nth': index + 1},
+                ))
+        if errors:
+            raise ValidationError(errors)
+        return values
+
+    def validate(self, value):
+        super().validate(value)
+        errors = []
+        for index, item in enumerate(value):
+            try:
+                self.base_field.validate(item)
+            except ValidationError as error:
+                errors.append(prefix_validation_error(
+                    error,
+                    prefix=self.error_messages['item_invalid'],
+                    code='item_invalid',
+                    params={'nth': index + 1},
+                ))
+        if errors:
+            raise ValidationError(errors)
+
+    def run_validators(self, value):
+        super().run_validators(value)
+        errors = []
+        for index, item in enumerate(value):
+            try:
+                self.base_field.run_validators(item)
+            except ValidationError as error:
+                errors.append(prefix_validation_error(
+                    error,
+                    prefix=self.error_messages['item_invalid'],
+                    code='item_invalid',
+                    params={'nth': index + 1},
+                ))
+        if errors:
+            raise ValidationError(errors)
+
+    def has_changed(self, initial, data):
+        try:
+            value = self.to_python(data)
+        except ValidationError:
+            pass
+        else:
+            if initial in self.empty_values and value in self.empty_values:
+                return False
+        return super().has_changed(initial, data)
+
+
+class SplitArrayWidget(forms.Widget):
+    template_name = 'postgres/widgets/split_array.html'
+
+    def __init__(self, widget, size, **kwargs):
+        self.widget = widget() if isinstance(widget, type) else widget
+        self.size = size
+        super().__init__(**kwargs)
+
+    @property
+    def is_hidden(self):
+        return self.widget.is_hidden
+
+    def value_from_datadict(self, data, files, name):
+        return [self.widget.value_from_datadict(data, files, '%s_%s' % (name, index))
+                for index in range(self.size)]
+
+    def value_omitted_from_data(self, data, files, name):
+        return all(
+            self.widget.value_omitted_from_data(data, files, '%s_%s' % (name, index))
+            for index in range(self.size)
+        )
+
+    def id_for_label(self, id_):
+        # See the comment for RadioSelect.id_for_label()
+        if id_:
+            id_ += '_0'
+        return id_
+
+    def get_context(self, name, value, attrs=None):
+        attrs = {} if attrs is None else attrs
+        context = super().get_context(name, value, attrs)
+        if self.is_localized:
+            self.widget.is_localized = self.is_localized
+        value = value or []
+        context['widget']['subwidgets'] = []
+        final_attrs = self.build_attrs(attrs)
+        id_ = final_attrs.get('id')
+        for i in range(max(len(value), self.size)):
+            try:
+                widget_value = value[i]
+            except IndexError:
+                widget_value = None
+            if id_:
+                final_attrs = {**final_attrs, 'id': '%s_%s' % (id_, i)}
+            final_attrs = final_attrs.copy()
+            context['widget']['subwidgets'].append(
+                self.widget.get_context(name + '_%s' % i, widget_value, final_attrs)['widget']
+            )
+        return context
+
+    @property
+    def media(self):
+        return self.widget.media
+
+    def __deepcopy__(self, memo):
+        obj = super().__deepcopy__(memo)
+        obj.widget = copy.deepcopy(self.widget)
+        return obj
+
+    @property
+    def needs_multipart_form(self):
+        return self.widget.needs_multipart_form
+
+
+class SplitArrayField(forms.Field):
+    default_error_messages = {
+        'item_invalid': _('Item %(nth)s in the array did not validate:'),
+    }
+
+    def __init__(self, base_field, size, *, remove_trailing_nulls=False, **kwargs):
+        self.base_field = base_field
+        self.size = size
+        self.remove_trailing_nulls = remove_trailing_nulls
+        widget = SplitArrayWidget(widget=base_field.widget, size=size)
+        kwargs.setdefault('widget', widget)
+        super().__init__(**kwargs)
+
+    def _remove_trailing_nulls(self, values):
+        index = None
+        if self.remove_trailing_nulls:
+            for i, value in reversed(list(enumerate(values))):
+                if value in self.base_field.empty_values:
+                    index = i
+                else:
+                    break
+            if index is not None:
+                values = values[:index]
+        return values, index
+
+    def to_python(self, value):
+        value = super().to_python(value)
+        return [self.base_field.to_python(item) for item in value]
+
+    def clean(self, value):
+        cleaned_data = []
+        errors = []
+        if not any(value) and self.required:
+            raise ValidationError(self.error_messages['required'])
+        max_size = max(self.size, len(value))
+        for index in range(max_size):
+            item = value[index]
+            try:
+                cleaned_data.append(self.base_field.clean(item))
+            except ValidationError as error:
+                errors.append(prefix_validation_error(
+                    error,
+                    self.error_messages['item_invalid'],
+                    code='item_invalid',
+                    params={'nth': index + 1},
+                ))
+                cleaned_data.append(None)
+            else:
+                errors.append(None)
+        cleaned_data, null_index = self._remove_trailing_nulls(cleaned_data)
+        if null_index is not None:
+            errors = errors[:null_index]
+        errors = list(filter(None, errors))
+        if errors:
+            raise ValidationError(list(chain.from_iterable(errors)))
+        return cleaned_data
+
+    def has_changed(self, initial, data):
+        try:
+            data = self.to_python(data)
+        except ValidationError:
+            pass
+        else:
+            data, _ = self._remove_trailing_nulls(data)
+            if initial in self.empty_values and data in self.empty_values:
+                return False
+        return super().has_changed(initial, data)
+EOL"
+16,15,1,1185842089381783,1185842271387204,0,0.0,mv temp_array.py ./django/contrib/postgres/forms/array.py
+17,16,1,1185842271390521,1185842719588194,0,0.0,python reproduce_issue.py
+18,17,1,1185842719592622,1185842907226040,0,0.0,"grep -A 10 ""def get_context"" ./django/contrib/postgres/forms/array.py"
+19,18,1,1185842907237672,1185843089274692,0,0.0,"grep -A 20 ""context\['widget'\]\['subwidgets'\] = \[\]"" ./django/contrib/postgres/forms/array.py"
+20,19,1,1185843089290031,1185843275870593,0,0.0,"cat > temp_array.py << 'EOL'
+import copy
+from itertools import chain
+
+from django import forms
+from django.contrib.postgres.validators import (
+    ArrayMaxLengthValidator, ArrayMinLengthValidator,
+)
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
+
+from ..utils import prefix_validation_error
+
+
+class SimpleArrayField(forms.CharField):
+    default_error_messages = {
+        'item_invalid': _('Item %(nth)s in the array did not validate:'),
+    }
+
+    def __init__(self, base_field, *, delimiter=',', max_length=None, min_length=None, **kwargs):
+        self.base_field = base_field
+        self.delimiter = delimiter
+        super().__init__(**kwargs)
+        if min_length is not None:
+            self.min_length = min_length
+            self.validators.append(ArrayMinLengthValidator(int(min_length)))
+        if max_length is not None:
+            self.max_length = max_length
+            self.validators.append(ArrayMaxLengthValidator(int(max_length)))
+
+    def clean(self, value):
+        value = super().clean(value)
+        return [self.base_field.clean(val) for val in value]
+
+    def prepare_value(self, value):
+        if isinstance(value, list):
+            return self.delimiter.join(str(self.base_field.prepare_value(v)) for v in value)
+        return value
+
+    def to_python(self, value):
+        if isinstance(value, list):
+            items = value
+        elif value:
+            items = value.split(self.delimiter)
+        else:
+            items = []
+        errors = []
+        values = []
+        for index, item in enumerate(items):
+            try:
+                values.append(self.base_field.to_python(item))
+            except ValidationError as error:
+                errors.append(prefix_validation_error(
+                    error,
+                    prefix=self.error_messages['item_invalid'],
+                    code='item_invalid',
+                    params={'nth': index + 1},
+                ))
+        if errors:
+            raise ValidationError(errors)
+        return values
+
+    def validate(self, value):
+        super().validate(value)
+        errors = []
+        for index, item in enumerate(value):
+            try:
+                self.base_field.validate(item)
+            except ValidationError as error:
+                errors.append(prefix_validation_error(
+                    error,
+                    prefix=self.error_messages['item_invalid'],
+                    code='item_invalid',
+                    params={'nth': index + 1},
+                ))
+        if errors:
+            raise ValidationError(errors)
+
+    def run_validators(self, value):
+        super().run_validators(value)
+        errors = []
+        for index, item in enumerate(value):
+            try:
+                self.base_field.run_validators(item)
+            except ValidationError as error:
+                errors.append(prefix_validation_error(
+                    error,
+                    prefix=self.error_messages['item_invalid'],
+                    code='item_invalid',
+                    params={'nth': index + 1},
+                ))
+        if errors:
+            raise ValidationError(errors)
+
+    def has_changed(self, initial, data):
+        try:
+            value = self.to_python(data)
+        except ValidationError:
+            pass
+        else:
+            if initial in self.empty_values and value in self.empty_values:
+                return False
+        return super().has_changed(initial, data)
+
+
+class SplitArrayWidget(forms.Widget):
+    template_name = 'postgres/widgets/split_array.html'
+
+    def __init__(self, widget, size, **kwargs):
+        self.widget = widget() if isinstance(widget, type) else widget
+        self.size = size
+        super().__init__(**kwargs)
+
+    @property
+    def is_hidden(self):
+        return self.widget.is_hidden
+
+    def value_from_datadict(self, data, files, name):
+        return [self.widget.value_from_datadict(data, files, '%s_%s' % (name, index))
+                for index in range(self.size)]
+
+    def value_omitted_from_data(self, data, files, name):
+        return all(
+            self.widget.value_omitted_from_data(data, files, '%s_%s' % (name, index))
+            for index in range(self.size)
+        )
+
+    def id_for_label(self, id_):
+        # See the comment for RadioSelect.id_for_label()
+        if id_:
+            id_ += '_0'
+        return id_
+
+    def get_context(self, name, value, attrs=None):
+        attrs = {} if attrs is None else attrs
+        context = super().get_context(name, value, attrs)
+        if self.is_localized:
+            self.widget.is_localized = self.is_localized
+        value = value or []
+        context['widget']['subwidgets'] = []
+        final_attrs = self.build_attrs(attrs).copy()
+        id_ = final_attrs.get('id')
+        for i in range(max(len(value), self.size)):
+            try:
+                widget_value = value[i]
+            except IndexError:
+                widget_value = None
+            if id_:
+                final_attrs = {**final_attrs, 'id': '%s_%s' % (id_, i)}
+            final_attrs = final_attrs.copy()
+            context['widget']['subwidgets'].append(
+                self.widget.get_context(name + '_%s' % i, widget_value, final_attrs)['widget']
+            )
+        return context
+
+    @property
+    def media(self):
+        return self.widget.media
+
+    def __deepcopy__(self, memo):
+        obj = super().__deepcopy__(memo)
+        obj.widget = copy.deepcopy(self.widget)
+        return obj
+
+    @property
+    def needs_multipart_form(self):
+        return self.widget.needs_multipart_form
+
+
+class SplitArrayField(forms.Field):
+    default_error_messages = {
+        'item_invalid': _('Item %(nth)s in the array did not validate:'),
+    }
+
+    def __init__(self, base_field, size, *, remove_trailing_nulls=False, **kwargs):
+        self.base_field = base_field
+        self.size = size
+        self.remove_trailing_nulls = remove_trailing_nulls
+        widget = SplitArrayWidget(widget=base_field.widget, size=size)
+        kwargs.setdefault('widget', widget)
+        super().__init__(**kwargs)
+
+    def _remove_trailing_nulls(self, values):
+        index = None
+        if self.remove_trailing_nulls:
+            for i, value in reversed(list(enumerate(values))):
+                if value in self.base_field.empty_values:
+                    index = i
+                else:
+                    break
+            if index is not None:
+                values = values[:index]
+        return values, index
+
+    def to_python(self, value):
+        value = super().to_python(value)
+        return [self.base_field.to_python(item) for item in value]
+
+    def clean(self, value):
+        cleaned_data = []
+        errors = []
+        if not any(value) and self.required:
+            raise ValidationError(self.error_messages['required'])
+        max_size = max(self.size, len(value))
+        for index in range(max_size):
+            item = value[index]
+            try:
+                cleaned_data.append(self.base_field.clean(item))
+            except ValidationError as error:
+                errors.append(prefix_validation_error(
+                    error,
+                    self.error_messages['item_invalid'],
+                    code='item_invalid',
+                    params={'nth': index + 1},
+                ))
+                cleaned_data.append(None)
+            else:
+                errors.append(None)
+        cleaned_data, null_index = self._remove_trailing_nulls(cleaned_data)
+        if null_index is not None:
+            errors = errors[:null_index]
+        errors = list(filter(None, errors))
+        if errors:
+            raise ValidationError(list(chain.from_iterable(errors)))
+        return cleaned_data
+
+    def has_changed(self, initial, data):
+        try:
+            data = self.to_python(data)
+        except ValidationError:
+            pass
+        else:
+            data, _ = self._remove_trailing_nulls(data)
+            if initial in self.empty_values and data in self.empty_values:
+                return False
+        return super().has_changed(initial, data)
+EOL"
+21,20,1,1185843275873919,1185843731467212,0,0.0,mv temp_array.py ./django/contrib/postgres/forms/array.py && python reproduce_issue.py
+22,21,1,1185843731495355,1185843919819490,0,0.0,"cat > reproduce_issue.py << 'EOL'
+import django
+from django.conf import settings
+from django.contrib.postgres.forms.array import SplitArrayField, SplitArrayWidget
+from django import forms
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        USE_TZ=True,
+        USE_I18N=True,
+        LANGUAGE_CODE='en-us',
+        INSTALLED_APPS=[],
+        TEMPLATES=[{
+            'BACKEND': 'django.template.backends.django.DjangoTemplates',
+            'DIRS': [],
+            'APP_DIRS': True,
+        }]
+    )
+django.setup()
+
+class TestForm(forms.Form):
+    bool_array = SplitArrayField(
+        base_field=forms.BooleanField(),
+        size=3,
+    )
+
+data = [True, False, False]
+form = TestForm({'bool_array_0': 'on', 'bool_array_1': '', 'bool_array_2': ''})
+form.is_valid()  # This should be True
+
+# Get the widget context to see the checked state
+widget = form.fields['bool_array'].widget
+context = widget.get_context('bool_array', data, {})
+
+print(""Initial data:"", data)
+for i, subwidget in enumerate(context['widget']['subwidgets']):
+    attrs = subwidget.get('attrs', {})
+    checked = attrs.get('checked')
+    print(f""Widget {i} value: {data[i] if i < len(data) else None}, checked: {checked}, attrs: {attrs}"")
+EOL"
+23,22,1,1185843919823748,1185844371129983,0,0.0,python reproduce_issue.py
+24,23,1,1185844371142867,1185844559637992,0,0.0,"cat > temp_array.py << 'EOL'
+import copy
+from itertools import chain
+
+from django import forms
+from django.contrib.postgres.validators import (
+    ArrayMaxLengthValidator, ArrayMinLengthValidator,
+)
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
+
+from ..utils import prefix_validation_error
+
+
+class SimpleArrayField(forms.CharField):
+    default_error_messages = {
+        'item_invalid': _('Item %(nth)s in the array did not validate:'),
+    }
+
+    def __init__(self, base_field, *, delimiter=',', max_length=None, min_length=None, **kwargs):
+        self.base_field = base_field
+        self.delimiter = delimiter
+        super().__init__(**kwargs)
+        if min_length is not None:
+            self.min_length = min_length
+            self.validators.append(ArrayMinLengthValidator(int(min_length)))
+        if max_length is not None:
+            self.max_length = max_length
+            self.validators.append(ArrayMaxLengthValidator(int(max_length)))
+
+    def clean(self, value):
+        value = super().clean(value)
+        return [self.base_field.clean(val) for val in value]
+
+    def prepare_value(self, value):
+        if isinstance(value, list):
+            return self.delimiter.join(str(self.base_field.prepare_value(v)) for v in value)
+        return value
+
+    def to_python(self, value):
+        if isinstance(value, list):
+            items = value
+        elif value:
+            items = value.split(self.delimiter)
+        else:
+            items = []
+        errors = []
+        values = []
+        for index, item in enumerate(items):
+            try:
+                values.append(self.base_field.to_python(item))
+            except ValidationError as error:
+                errors.append(prefix_validation_error(
+                    error,
+                    prefix=self.error_messages['item_invalid'],
+                    code='item_invalid',
+                    params={'nth': index + 1},
+                ))
+        if errors:
+            raise ValidationError(errors)
+        return values
+
+    def validate(self, value):
+        super().validate(value)
+        errors = []
+        for index, item in enumerate(value):
+            try:
+                self.base_field.validate(item)
+            except ValidationError as error:
+                errors.append(prefix_validation_error(
+                    error,
+                    prefix=self.error_messages['item_invalid'],
+                    code='item_invalid',
+                    params={'nth': index + 1},
+                ))
+        if errors:
+            raise ValidationError(errors)
+
+    def run_validators(self, value):
+        super().run_validators(value)
+        errors = []
+        for index, item in enumerate(value):
+            try:
+                self.base_field.run_validators(item)
+            except ValidationError as error:
+                errors.append(prefix_validation_error(
+                    error,
+                    prefix=self.error_messages['item_invalid'],
+                    code='item_invalid',
+                    params={'nth': index + 1},
+                ))
+        if errors:
+            raise ValidationError(errors)
+
+    def has_changed(self, initial, data):
+        try:
+            value = self.to_python(data)
+        except ValidationError:
+            pass
+        else:
+            if initial in self.empty_values and value in self.empty_values:
+                return False
+        return super().has_changed(initial, data)
+
+
+class SplitArrayWidget(forms.Widget):
+    template_name = 'postgres/widgets/split_array.html'
+
+    def __init__(self, widget, size, **kwargs):
+        self.widget = widget() if isinstance(widget, type) else widget
+        self.size = size
+        super().__init__(**kwargs)
+
+    @property
+    def is_hidden(self):
+        return self.widget.is_hidden
+
+    def value_from_datadict(self, data, files, name):
+        return [self.widget.value_from_datadict(data, files, '%s_%s' % (name, index))
+                for index in range(self.size)]
+
+    def value_omitted_from_data(self, data, files, name):
+        return all(
+            self.widget.value_omitted_from_data(data, files, '%s_%s' % (name, index))
+            for index in range(self.size)
+        )
+
+    def id_for_label(self, id_):
+        # See the comment for RadioSelect.id_for_label()
+        if id_:
+            id_ += '_0'
+        return id_
+
+    def get_context(self, name, value, attrs=None):
+        attrs = {} if attrs is None else attrs
+        context = super().get_context(name, value, attrs)
+        if self.is_localized:
+            self.widget.is_localized = self.is_localized
+        value = value or []
+        context['widget']['subwidgets'] = []
+        base_attrs = self.build_attrs(attrs)
+        id_ = base_attrs.get('id')
+        for i in range(max(len(value), self.size)):
+            try:
+                widget_value = value[i]
+            except IndexError:
+                widget_value = None
+            
+            # Create a fresh copy of base attributes for each widget
+            final_attrs = base_attrs.copy()
+            
+            # Add the id for this specific widget
+            if id_:
+                final_attrs['id'] = '%s_%s' % (id_, i)
+            
+            # Get the context for this subwidget
+            subwidget_context = self.widget.get_context(name + '_%s' % i, widget_value, final_attrs)['widget']
+            context['widget']['subwidgets'].append(subwidget_context)
+        return context
+
+    @property
+    def media(self):
+        return self.widget.media
+
+    def __deepcopy__(self, memo):
+        obj = super().__deepcopy__(memo)
+        obj.widget = copy.deepcopy(self.widget)
+        return obj
+
+    @property
+    def needs_multipart_form(self):
+        return self.widget.needs_multipart_form
+
+
+class SplitArrayField(forms.Field):
+    default_error_messages = {
+        'item_invalid': _('Item %(nth)s in the array did not validate:'),
+    }
+
+    def __init__(self, base_field, size, *, remove_trailing_nulls=False, **kwargs):
+        self.base_field = base_field
+        self.size = size
+        self.remove_trailing_nulls = remove_trailing_nulls
+        widget = SplitArrayWidget(widget=base_field.widget, size=size)
+        kwargs.setdefault('widget', widget)
+        super().__init__(**kwargs)
+
+    def _remove_trailing_nulls(self, values):
+        index = None
+        if self.remove_trailing_nulls:
+            for i, value in reversed(list(enumerate(values))):
+                if value in self.base_field.empty_values:
+                    index = i
+                else:
+                    break
+            if index is not None:
+                values = values[:index]
+        return values, index
+
+    def to_python(self, value):
+        value = super().to_python(value)
+        return [self.base_field.to_python(item) for item in value]
+
+    def clean(self, value):
+        cleaned_data = []
+        errors = []
+        if not any(value) and self.required:
+            raise ValidationError(self.error_messages['required'])
+        max_size = max(self.size, len(value))
+        for index in range(max_size):
+            item = value[index]
+            try:
+                cleaned_data.append(self.base_field.clean(item))
+            except ValidationError as error:
+                errors.append(prefix_validation_error(
+                    error,
+                    self.error_messages['item_invalid'],
+                    code='item_invalid',
+                    params={'nth': index + 1},
+                ))
+                cleaned_data.append(None)
+            else:
+                errors.append(None)
+        cleaned_data, null_index = self._remove_trailing_nulls(cleaned_data)
+        if null_index is not None:
+            errors = errors[:null_index]
+        errors = list(filter(None, errors))
+        if errors:
+            raise ValidationError(list(chain.from_iterable(errors)))
+        return cleaned_data
+
+    def has_changed(self, initial, data):
+        try:
+            data = self.to_python(data)
+        except ValidationError:
+            pass
+        else:
+            data, _ = self._remove_trailing_nulls(data)
+            if initial in self.empty_values and data in self.empty_values:
+                return False
+        return super().has_changed(initial, data)
+EOL"
+25,24,1,1185844559645907,1185845019240808,0,0.0,mv temp_array.py ./django/contrib/postgres/forms/array.py && python reproduce_issue.py
+26,25,1,1185845019257830,1185845206823897,0,0.0,"cat > reproduce_issue.py << 'EOL'
+import django
+from django.conf import settings
+from django.contrib.postgres.forms.array import SplitArrayField, SplitArrayWidget
+from django import forms
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        USE_TZ=True,
+        USE_I18N=True,
+        LANGUAGE_CODE='en-us',
+        INSTALLED_APPS=[],
+        TEMPLATES=[{
+            'BACKEND': 'django.template.backends.django.DjangoTemplates',
+            'DIRS': [],
+            'APP_DIRS': True,
+        }]
+    )
+django.setup()
+
+class TestForm(forms.Form):
+    bool_array = SplitArrayField(
+        base_field=forms.BooleanField(),
+        size=3,
+    )
+
+def test_case(data, form_data):
+    print(f""\nTest case with data: {data}"")
+    form = TestForm(form_data)
+    form.is_valid()
+    widget = form.fields['bool_array'].widget
+    context = widget.get_context('bool_array', data, {})
+    for i, subwidget in enumerate(context['widget']['subwidgets']):
+        attrs = subwidget.get('attrs', {})
+        checked = attrs.get('checked')
+        print(f""Widget {i} value: {data[i] if i < len(data) else None}, checked: {checked}"")
+
+# Test case 1: [True, False, False]
+test_case([True, False, False], {'bool_array_0': 'on', 'bool_array_1': '', 'bool_array_2': ''})
+
+# Test case 2: [False, True, False]
+test_case([False, True, False], {'bool_array_0': '', 'bool_array_1': 'on', 'bool_array_2': ''})
+
+# Test case 3: [False, False, True]
+test_case([False, False, True], {'bool_array_0': '', 'bool_array_1': '', 'bool_array_2': 'on'})
+
+# Test case 4: [True, True, False]
+test_case([True, True, False], {'bool_array_0': 'on', 'bool_array_1': 'on', 'bool_array_2': ''})
+
+# Test case 5: All False
+test_case([False, False, False], {'bool_array_0': '', 'bool_array_1': '', 'bool_array_2': ''})
+
+# Test case 6: All True
+test_case([True, True, True], {'bool_array_0': 'on', 'bool_array_1': 'on', 'bool_array_2': 'on'})
+EOL"
+27,26,1,1185845206829707,1185845660981598,0,0.0,python reproduce_issue.py
+28,27,1,1185845660991897,1185845864298028,0,0.0,git diff -- ./django/contrib/postgres/forms/array.py > patch.txt
+29,28,1,1185845864310992,1185846051531041,0,0.0,cat patch.txt
+30,29,1,1185846051541911,1185846234025497,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

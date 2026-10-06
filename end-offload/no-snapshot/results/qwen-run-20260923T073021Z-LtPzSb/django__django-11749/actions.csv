@@ -1,0 +1,300 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1183751188450497,1183752230273498,0,0,"find . -type f -name ""*.py"" | grep -v ""__pycache__"" | xargs grep -l ""call_command"" | head -10"
+1,1,2,1183752230284719,1183752592189029,0,0,"find . -type f -name ""*.py"" | grep -v ""__pycache__"" | xargs grep -l ""class BaseCommand"" | head -10"
+2,2,1,1183752592196222,1183752947981709,0,0,"find . -type f -name ""*.py"" | grep -v ""__pycache__"" | xargs grep -l ""def call_command"" | head -10"
+3,3,1,1183752947990315,1183753131370016,0,0,"cat ./django/core/management/__init__.py | grep -A 20 ""def call_command"""
+4,3,2,1183753131381388,1183753316262077,0,0,"cat ./django/core/management/base.py | grep -A 50 ""class BaseCommand"""
+5,4,1,1183753316271294,1183753503815555,0,0,"cat ./django/core/management/__init__.py | grep -A 100 ""def call_command"""
+6,5,1,1183753503908784,1183753689930001,0,0,"cat ./django/core/management/base.py | grep -A 200 ""class BaseCommand"" | tail -n +52"
+7,6,1,1183753689936593,1183753875975609,0,0,"cat ./django/core/management/base.py | grep -A 100 ""def execute"""
+8,7,1,1183753875986569,1183754059325019,0,0,"grep -r ""mutually_exclusive"" ./django/core/management/"
+9,8,1,1183754059342682,1183754426759646,0,0,"find . -type f -name ""*.py"" | xargs grep -l ""class CommandParser"" | head -1"
+10,9,1,1183754426773181,1183754611204355,0,0,"cat ./django/core/management/base.py | grep -A 50 ""class CommandParser"""
+11,10,1,1183754611211237,1183754798709637,0,0,"mkdir -p ./tests/management && cat > ./tests/management/test_mutually_exclusive.py << 'EOL'
+from django.core.management.base import BaseCommand
+from django.core.management import call_command
+
+class Command(BaseCommand):
+    def add_arguments(self, parser):
+        shop = parser.add_mutually_exclusive_group(required=True)
+        shop.add_argument('--shop-id', nargs='?', type=int, default=None, dest='shop_id')
+        shop.add_argument('--shop', nargs='?', type=str, default=None, dest='shop_name')
+    
+    def handle(self, *args, **options):
+        print(f""Shop ID: {options.get('shop_id')}"")
+        print(f""Shop name: {options.get('shop_name')}"")
+
+class TestCommand:
+    def test_call_command_with_kwarg(self):
+        # This should work but currently fails
+        try:
+            call_command('test_mutually_exclusive', shop_id=1)
+            print(""SUCCESS: call_command with shop_id kwarg worked"")
+        except Exception as e:
+            print(f""ERROR: {e}"")
+            
+        # This works
+        try:
+            call_command('test_mutually_exclusive', '--shop-id=1')
+            print(""SUCCESS: call_command with --shop-id=1 worked"")
+        except Exception as e:
+            print(f""ERROR: {e}"")
+            
+if __name__ == '__main__':
+    test = TestCommand()
+    test.test_call_command_with_kwarg()
+EOL"
+12,11,1,1183754798716700,1183755135832238,0,0,cd /testbed && python ./tests/management/test_mutually_exclusive.py
+13,12,1,1183755135862043,1183755325567700,0,0,"cat > ./tests/management/test_call_command.py << 'EOL'
+import argparse
+from django.core.management import call_command
+from django.core.management.base import BaseCommand
+
+class MockCommand(BaseCommand):
+    def create_parser(self, prog_name, subcommand):
+        parser = argparse.ArgumentParser()
+        
+        # Add mutually exclusive group
+        shop = parser.add_mutually_exclusive_group(required=True)
+        shop.add_argument('--shop-id', nargs='?', type=int, default=None, dest='shop_id')
+        shop.add_argument('--shop', nargs='?', type=str, default=None, dest='shop_name')
+        
+        return parser
+    
+    def handle(self, *args, **options):
+        print(f""Handling command with options: {options}"")
+        return ""Success""
+
+def test_call_command():
+    cmd = MockCommand()
+    
+    # Test 1: Call with positional argument (this should work)
+    print(""Test 1: Calling with --shop-id=1"")
+    try:
+        result = call_command(cmd, '--shop-id=1')
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+    
+    # Test 2: Call with keyword argument (this currently fails)
+    print(""Test 2: Calling with shop_id=1"")
+    try:
+        result = call_command(cmd, shop_id=1)
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+    
+    # Test 3: Call with the other option in the group
+    print(""Test 3: Calling with shop_name='test'"")
+    try:
+        result = call_command(cmd, shop='test')
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+
+if __name__ == '__main__':
+    test_call_command()
+EOL"
+14,13,1,1183755325576988,1183755597776260,2,2,cd /testbed && python ./tests/management/test_call_command.py
+15,14,1,1183755597788423,1183755785460417,0,0,"cat > ./tests/management/test_call_command.py << 'EOL'
+from django.core.management import call_command
+from django.core.management.base import BaseCommand
+
+class TestCommand(BaseCommand):
+    def add_arguments(self, parser):
+        # Add mutually exclusive group
+        shop = parser.add_mutually_exclusive_group(required=True)
+        shop.add_argument('--shop-id', nargs='?', type=int, default=None, dest='shop_id')
+        shop.add_argument('--shop', nargs='?', type=str, default=None, dest='shop_name')
+    
+    def handle(self, *args, **options):
+        print(f""Handling command with options: {options}"")
+        return ""Success""
+
+def test_call_command():
+    # Test 1: Call with positional argument (this should work)
+    print(""Test 1: Calling with --shop-id=1"")
+    try:
+        result = call_command('test_call_command', '--shop-id=1')
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+    
+    # Test 2: Call with keyword argument (this currently fails)
+    print(""Test 2: Calling with shop_id=1"")
+    try:
+        result = call_command('test_call_command', shop_id=1)
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+    
+    # Test 3: Call with the other option in the group
+    print(""Test 3: Calling with shop_name='test'"")
+    try:
+        result = call_command('test_call_command', shop='test')
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+
+if __name__ == '__main__':
+    test_call_command()
+EOL"
+16,15,1,1183755785475555,1183755973163540,0,0,"mkdir -p ./django/core/management/commands && cat > ./django/core/management/commands/test_mutually_exclusive.py << 'EOL'
+from django.core.management.base import BaseCommand
+
+class Command(BaseCommand):
+    help = 'Test command for mutually exclusive arguments'
+    
+    def add_arguments(self, parser):
+        # Add mutually exclusive group
+        shop = parser.add_mutually_exclusive_group(required=True)
+        shop.add_argument('--shop-id', nargs='?', type=int, default=None, dest='shop_id')
+        shop.add_argument('--shop', nargs='?', type=str, default=None, dest='shop_name')
+    
+    def handle(self, *args, **options):
+        print(f""Handling command with options: {options}"")
+        return ""Success""
+EOL"
+17,16,1,1183755973169441,1183756160104877,0,0,"cat > ./tests/management/test_call_command.py << 'EOL'
+from django.core.management import call_command
+import sys
+import os
+
+def test_call_command():
+    # Test 1: Call with positional argument (this should work)
+    print(""Test 1: Calling with --shop-id=1"")
+    try:
+        result = call_command('test_mutually_exclusive', '--shop-id=1')
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+    
+    # Test 2: Call with keyword argument (this currently fails)
+    print(""Test 2: Calling with shop_id=1"")
+    try:
+        result = call_command('test_mutually_exclusive', shop_id=1)
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+    
+    # Test 3: Call with the other option in the group
+    print(""Test 3: Calling with shop_name='test'"")
+    try:
+        result = call_command('test_mutually_exclusive', shop='test')
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+
+if __name__ == '__main__':
+    test_call_command()
+EOL"
+18,17,1,1183756160114094,1183756424035983,0,0,cd /testbed && python ./tests/management/test_call_command.py
+19,18,1,1183756424047064,1183756613013348,0,0,"cp ./django/core/management/__init__.py ./django/core/management/__init__.py.bak && cat > ./django/core/management/__init__.py.patch << 'EOL'
+diff --git a/django/core/management/__init__.py b/django/core/management/__init__.py
+--- a/django/core/management/__init__.py
++++ b/django/core/management/__init__.py
+@@ -100,6 +100,15 @@
+     parser_actions = list(get_actions(parser))
+     # Any required arguments which are passed in via **options must be passed
+     # to parse_args().
++    # Handle mutually exclusive groups that are required
++    for group in parser._mutually_exclusive_groups:
++        if group.required:
++            # If any of the options in this required group are in options, include it
++            for opt in group._group_actions:
++                if opt.dest in options:
++                    parse_args.append('{}={}'.format(min(opt.option_strings), arg_options[opt.dest]))
++                    break  # Only need to add one from the group
++
+     parse_args += [
+         '{}={}'.format(min(opt.option_strings), arg_options[opt.dest])
+         for opt in parser_actions if opt.required and opt.dest in options
+EOL"
+20,19,1,1183756613021934,1183756798323811,0,0,cd /testbed && patch -p1 < ./django/core/management/__init__.py.patch
+21,20,1,1183756798337336,1183757066808161,0,0,cd /testbed && python ./tests/management/test_call_command.py
+22,21,1,1183757066822167,1183757252595942,0,0,"cat > ./tests/management/test_call_command.py << 'EOL'
+from django.core.management import call_command
+import sys
+import os
+
+def test_call_command():
+    # Test 1: Call with positional argument (this should work)
+    print(""Test 1: Calling with --shop-id=1"")
+    try:
+        result = call_command('test_mutually_exclusive', '--shop-id=1')
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+    
+    # Test 2: Call with keyword argument (this should now work)
+    print(""Test 2: Calling with shop_id=1"")
+    try:
+        result = call_command('test_mutually_exclusive', shop_id=1)
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+    
+    # Test 3: Call with the other option in the group using correct dest name
+    print(""Test 3: Calling with shop_name='test'"")
+    try:
+        result = call_command('test_mutually_exclusive', shop_name='test')
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+
+if __name__ == '__main__':
+    test_call_command()
+EOL"
+23,22,1,1183757252601131,1183757525092845,0,0,cd /testbed && python ./tests/management/test_call_command.py
+24,23,1,1183757525096642,1183757703789387,0,0,"cat > ./django/core/management/commands/test_multiple_groups.py << 'EOL'
+from django.core.management.base import BaseCommand
+
+class Command(BaseCommand):
+    help = 'Test command for multiple mutually exclusive groups'
+    
+    def add_arguments(self, parser):
+        # First mutually exclusive group
+        shop = parser.add_mutually_exclusive_group(required=True)
+        shop.add_argument('--shop-id', nargs='?', type=int, default=None, dest='shop_id')
+        shop.add_argument('--shop', nargs='?', type=str, default=None, dest='shop_name')
+        
+        # Second mutually exclusive group
+        user = parser.add_mutually_exclusive_group(required=True)
+        user.add_argument('--user-id', nargs='?', type=int, default=None, dest='user_id')
+        user.add_argument('--username', nargs='?', type=str, default=None, dest='username')
+    
+    def handle(self, *args, **options):
+        print(f""Handling command with options: {options}"")
+        return ""Success""
+EOL"
+25,24,1,1183757703800327,1183757882144690,0,0,"cat > ./tests/management/test_multiple_groups.py << 'EOL'
+from django.core.management import call_command
+
+def test_multiple_groups():
+    print(""Test 1: All keyword arguments"")
+    try:
+        result = call_command('test_multiple_groups', shop_id=1, user_id=2)
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+    
+    print(""Test 2: Mixed arguments"")
+    try:
+        result = call_command('test_multiple_groups', '--shop-id=1', user_id=2)
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+    
+    print(""Test 3: All positional arguments"")
+    try:
+        result = call_command('test_multiple_groups', '--shop-id=1', '--user-id=2')
+        print(f""Result: {result}\n"")
+    except Exception as e:
+        print(f""Error: {e}\n"")
+
+if __name__ == '__main__':
+    test_multiple_groups()
+EOL"
+26,25,1,1183757882150040,1183758150009131,0,0,cd /testbed && python ./tests/management/test_multiple_groups.py
+27,26,1,1183758150012717,1183758353254820,0,0,git diff -- django/core/management/__init__.py > patch.txt
+28,27,1,1183758353260922,1183758538804513,0,0,cat patch.txt

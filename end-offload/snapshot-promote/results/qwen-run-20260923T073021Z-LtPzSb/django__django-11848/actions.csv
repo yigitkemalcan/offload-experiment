@@ -1,0 +1,1207 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,2,1,1185623306112752,1185623576746779,0,0.0,ls -la
+1,3,1,1185623576761616,1185623760993518,0,0.0,cat django/utils/http.py
+2,4,1,1185623761000191,1185623947608456,0,0.0,grep -n 'parse_http_date' django/utils/http.py
+3,5,1,1185623947615750,1185624132554811,0,0.0,"sed -n '150,180p' django/utils/http.py"
+4,6,1,1185624132558608,1185624316645914,0,0.0,"sed -n '180,200p' django/utils/http.py"
+5,7,1,1185624316653839,1185624520198534,1,1.0,"echo ""from django.utils.http import parse_http_date\nfrom datetime import datetime\n\n# Test with a future date that should be interpreted as past\ndate_str = 'Wednesday, 16-Aug-24 12:00:00 GMT'  # 2024, but written as 24\nprint(f'Parsing: {date_str}')\ntry:\n    timestamp = parse_http_date(date_str)\n    dt = datetime.utcfromtimestamp(timestamp)\n    print(f'Parsed as: {dt.year}')\nexcept Exception as e:\n    print(f'Error: {e}')\n\n# Current year is 2023, so 24 should be 2024, not 1924\nprint(f'Current year: {datetime.now().year}')\n"" > test_date.py && python test_date.py"
+6,8,1,1185624520205878,1185624796761380,0,0.0,"cat > test_date.py << 'EOL'
+from django.utils.http import parse_http_date
+from datetime import datetime
+
+date_str = 'Wednesday, 16-Aug-24 12:00:00 GMT'  # Year 24
+print(f'Parsing: {date_str}')
+try:
+    timestamp = parse_http_date(date_str)
+    dt = datetime.utcfromtimestamp(timestamp)
+    print(f'Parsed year: {dt.year}')
+except Exception as e:
+    print(f'Error: {e}')
+
+print(f'Current year: {datetime.now().year}')
+EOL
+
+python test_date.py"
+7,9,1,1185624796767331,1185625036824867,0,0.0,"cat > test_date.py << 'EOL'
+from django.utils.http import parse_http_date
+from datetime import datetime
+
+current_year = datetime.now().year
+print(f'Current year: {current_year}')
+
+# Test cases to expose the issue
+for year_2d in [24, 70, 85]:
+    year_str = f'{year_2d:02d}'
+    date_str = f'Wednesday, 16-Aug-{year_str} 12:00:00 GMT'
+    print(f'\nParsing: {date_str}')
+    try:
+        timestamp = parse_http_date(date_str)
+        dt = datetime.utcfromtimestamp(timestamp)
+        print(f'Parsed year: {dt.year}')
+        years_diff = abs(current_year - dt.year)
+        print(f'Years from current: {years_diff} ({""future"" if dt.year > current_year else ""past""})')
+    except Exception as e:
+        print(f'Error: {e}')
+EOL
+
+python test_date.py"
+8,10,1,1185625036836478,1185625214779500,2,2.0,"cp django/utils/http.py django/utils/http.py.bak && sed -i '158,170c\def parse_http_date(date):\n    """"""\n    Parse a date format as specified by HTTP RFC7231 section 7.1.1.1.\n\n    The three formats allowed by the RFC are accepted, even if only the first\n    one is still in widespread use.\n\n    Return an integer expressed in seconds since the epoch, in UTC.\n    """"""\n    # email.utils.parsedate() does the job for RFC1123 dates; unfortunately\n    # RFC7231 makes it mandatory to support RFC850 dates too. So we roll\n    # our own RFC-compliant parsing.\n    for regex in RFC1123_DATE, RFC850_DATE, ASCTIME_DATE:\n        m = regex.match(date)\n        if m is not None:\n            break\n    else:\n        raise ValueError(""%r is not in a valid HTTP date format"" % date)\n    try:\n        year = int(m.group(\'year\'))\n        if year < 100:\n            current_year = datetime.datetime.now().year\n            current_century = current_year // 100 * 100\n            # First assume it\'s in the current century\n            year += current_century\n            # If the date is more than 50 years in the future, it should be interpreted\n            # as the most recent year in the past with the same last two digits\n            if year > current_year + 50:\n                year -= 100\n            # If the date is more than 50 years in the past, it should be interpreted\n            # as the most recent year in the future with the same last two digits\n            elif year < current_year - 50:\n                year += 100' django/utils/http.py"
+9,11,1,1185625214782776,1185625395893869,2,2.0,"cat django/utils/http.py | sed '158,170!b; 158c\def parse_http_date(date):\n    """"""\n    Parse a date format as specified by HTTP RFC7231 section 7.1.1.1.\n\n    The three formats allowed by the RFC are accepted, even if only the first\n    one is still in widespread use.\n\n    Return an integer expressed in seconds since the epoch, in UTC.\n    """"""\n    # email.utils.parsedate() does the job for RFC1123 dates; unfortunately\n    # RFC7231 makes it mandatory to support RFC850 dates too. So we roll\n    # our own RFC-compliant parsing.\n    for regex in RFC1123_DATE, RFC850_DATE, ASCTIME_DATE:\n        m = regex.match(date)\n        if m is not None:\n            break\n    else:\n        raise ValueError(""%r is not in a valid HTTP date format"" % date)\n    try:\n        year = int(m.group(\'year\'))\n        if year < 100:\n            current_year = datetime.datetime.now().year\n            current_century = current_year // 100 * 100\n            # First assume it\'s in the current century\n            year += current_century\n            # If the date is more than 50 years in the future, it should be interpreted\n            # as the most recent year in the past with the same last two digits\n            if year > current_year + 50:\n                year -= 100\n            # If the date is more than 50 years in the past, it should be interpreted\n            # as the most recent year in the future with the same last two digits\n            elif year < current_year - 50:\n                year += 100' > temp_http.py && mv temp_http.py django/utils/http.py"
+10,13,1,1185625395899409,1185625577052832,0,0.0,grep -q 'import datetime' django/utils/http.py || sed -i '3iimport datetime' django/utils/http.py
+11,14,1,1185625577069813,1185625763639987,0,0.0,"cat > temp_http.py << 'EOL'
+$(head -n 157 django/utils/http.py)
+def parse_http_date(date):
+    """"""
+    Parse a date format as specified by HTTP RFC7231 section 7.1.1.1.
+
+    The three formats allowed by the RFC are accepted, even if only the first
+    one is still in widespread use.
+
+    Return an integer expressed in seconds since the epoch, in UTC.
+    """"""
+    # email.utils.parsedate() does the job for RFC1123 dates; unfortunately
+    # RFC7231 makes it mandatory to support RFC850 dates too. So we roll
+    # our own RFC-compliant parsing.
+    for regex in RFC1123_DATE, RFC850_DATE, ASCTIME_DATE:
+        m = regex.match(date)
+        if m is not None:
+            break
+    else:
+        raise ValueError(""%r is not in a valid HTTP date format"" % date)
+    try:
+        year = int(m.group('year'))
+        if year < 100:
+            current_year = datetime.datetime.now().year
+            current_century = current_year // 100 * 100
+            # First assume it's in the current century
+            year += current_century
+            # If the date is more than 50 years in the future, it should be interpreted
+            # as the most recent year in the past with the same last two digits
+            if year > current_year + 50:
+                year -= 100
+            # If the date is more than 50 years in the past, it should be interpreted
+            # as the most recent year in the future with the same last two digits
+            elif year < current_year - 50:
+                year += 100
+        month = MONTHS.index(m.group('mon').lower()) + 1
+        day = int(m.group('day'))
+        hour = int(m.group('hour'))
+        min = int(m.group('min'))
+        sec = int(m.group('sec'))
+        result = datetime.datetime(year, month, day, hour, min, sec)
+        return calendar.timegm(result.utctimetuple())
+    except Exception as exc:
+        raise ValueError(""%r is not a valid date"" % date) from exc
+
+$(tail -n +171 django/utils/http.py)
+EOL
+
+mv temp_http.py django/utils/http.py"
+12,15,1,1185625763646179,1185625984076637,1,1.0,"cat > test_date.py << 'EOL'
+from django.utils.http import parse_http_date
+from datetime import datetime
+
+current_year = datetime.now().year
+print(f'Current year: {current_year}')
+
+# Test cases to verify the fix
+# Format: (year_2d, expected_behavior_description)
+test_cases = [
+    (24, ""Should be 2024 - recent past""),
+    (70, ""Should be 2070 if within 50 years future, otherwise 1970""),
+    (85, ""Should be 1985 - distant past""),
+    (30, ""Should be 2030 if within 50 years future, otherwise 1930""),
+]
+
+for year_2d, description in test_cases:
+    year_str = f'{year_2d:02d}'
+    date_str = f'Wednesday, 16-Aug-{year_str} 12:00:00 GMT'
+    print(f'\nParsing: {date_str} ({description})')
+    try:
+        timestamp = parse_http_date(date_str)
+        dt = datetime.utcfromtimestamp(timestamp)
+        print(f'Parsed year: {dt.year}')
+        years_diff = abs(current_year - dt.year)
+        when = ""future"" if dt.year > current_year else ""past""
+        print(f'Years from current: {years_diff} ({when})')
+        
+        # Verify RFC 7231 rule: more than 50 years in future should be interpreted as past
+        if year_2d < 100:
+            expected_year = current_year // 100 * 100 + year_2d
+            if expected_year > current_year + 50:
+                expected_year -= 100
+            elif expected_year < current_year - 50:
+                expected_year += 100
+            print(f'RFC 7231 expected: {expected_year}')
+            print(f'Correct: {dt.year == expected_year}')
+    except Exception as e:
+        print(f'Error: {e}')
+EOL
+
+python test_date.py"
+13,16,1,1185625984088058,1185626169819021,0,0.0,cp django/utils/http.py django/utils/http.py.bak && cat django/utils/http.py.bak > django/utils/http.py
+14,17,1,1185626169825824,1185626374506184,0,0.0,"cat > modify_http.py << 'EOL'
+import re
+import datetime
+
+# Read the file
+with open('django/utils/http.py', 'r') as f:
+    content = f.read()
+
+# Ensure datetime is imported
+if 'import datetime' not in content:
+    content = content.replace('import calendar', 'import calendar\nimport datetime')
+
+# Find and replace the parse_http_date function
+start_marker = 'def parse_http_date(date):'
+end_marker = 'month = MONTHS.index(m.group(\'mon\').lower()) + 1'
+
+# Extract the part before the year handling
+before_year = content.split(start_marker)[0] + start_marker
+after_year = content.split(end_marker)[1]
+
+# New year handling logic
+new_year_logic = '''
+    """"""
+    Parse a date format as specified by HTTP RFC7231 section 7.1.1.1.
+
+    The three formats allowed by the RFC are accepted, even if only the first
+    one is still in widespread use.
+
+    Return an integer expressed in seconds since the epoch, in UTC.
+    """"""
+    # email.utils.parsedate() does the job for RFC1123 dates; unfortunately
+    # RFC7231 makes it mandatory to support RFC850 dates too. So we roll
+    # our own RFC-compliant parsing.
+    for regex in RFC1123_DATE, RFC850_DATE, ASCTIME_DATE:
+        m = regex.match(date)
+        if m is not None:
+            break
+    else:
+        raise ValueError(""%r is not in a valid HTTP date format"" % date)
+    try:
+        year = int(m.group('year'))
+        if year < 100:
+            current_year = datetime.datetime.now().year
+            current_century = current_year // 100 * 100
+            # First assume it\'s in the current century
+            year += current_century
+            # If the date is more than 50 years in the future, it should be interpreted
+            # as the most recent year in the past with the same last two digits
+            if year > current_year + 50:
+                year -= 100
+            # If the date is more than 50 years in the past, it should be interpreted
+            # as the most recent year in the future with the same last two digits
+            elif year < current_year - 50:
+                year += 100'''
+
+# Reconstruct the content
+new_content = before_year + new_year_logic + '\n    ' + end_marker + after_year
+
+# Write the modified content back
+with open('django/utils/http.py', 'w') as f:
+    f.write(new_content)
+
+print(""Successfully modified parse_http_date function"")
+EOL
+
+python modify_http.py"
+15,18,1,1185626374512416,1185626602179082,1,1.0,"cat > test_date.py << 'EOL'
+from django.utils.http import parse_http_date
+from datetime import datetime
+
+current_year = datetime.now().year
+print(f'Current year: {current_year}')
+
+# Test cases to verify the fix
+test_cases = [
+    (24, ""Recent past - should be 2024""),
+    (70, ""Future date - should be 2070 if within 50 years, otherwise 1970""),
+    (85, ""Distant past - should be 1985""),
+    (30, ""Future date - should be 2030 if within 50 years, otherwise 1930""),
+]
+
+for year_2d, description in test_cases:
+    year_str = f'{year_2d:02d}'
+    date_str = f'Wednesday, 16-Aug-{year_str} 12:00:00 GMT'
+    print(f'\nParsing: {date_str} ({description})')
+    try:
+        timestamp = parse_http_date(date_str)
+        dt = datetime.utcfromtimestamp(timestamp)
+        print(f'Parsed year: {dt.year}')
+        years_diff = abs(current_year - dt.year)
+        when = ""future"" if dt.year > current_year else ""past""
+        print(f'Years from current: {years_diff} ({when})')
+        
+        # Check if the RFC 7231 rule is followed
+        expected_year = current_year // 100 * 100 + year_2d
+        if expected_year > current_year + 50:
+            expected_year -= 100
+        elif expected_year < current_year - 50:
+            expected_year += 100
+        print(f'RFC 7231 expected: {expected_year}')
+        print(f'Correct: {dt.year == expected_year}')
+    except Exception as e:
+        print(f'Error: {e}')
+EOL
+
+python test_date.py"
+16,19,1,1185626602195312,1185626787664881,0,0.0,head -n 20 django/utils/http.py
+17,20,1,1185626787672926,1185626971969192,0,0.0,"cat django/utils/http.py.bak | head -n 157 > temp_http.py && cat >> temp_http.py << 'EOL'
+def parse_http_date(date):
+    """"""
+    Parse a date format as specified by HTTP RFC7231 section 7.1.1.1.
+
+    The three formats allowed by the RFC are accepted, even if only the first
+    one is still in widespread use.
+
+    Return an integer expressed in seconds since the epoch, in UTC.
+    """"""
+    # email.utils.parsedate() does the job for RFC1123 dates; unfortunately
+    # RFC7231 makes it mandatory to support RFC850 dates too. So we roll
+    # our own RFC-compliant parsing.
+    for regex in RFC1123_DATE, RFC850_DATE, ASCTIME_DATE:
+        m = regex.match(date)
+        if m is not None:
+            break
+    else:
+        raise ValueError(""%r is not in a valid HTTP date format"" % date)
+    try:
+        year = int(m.group('year'))
+        if year < 100:
+            current_year = datetime.datetime.now().year
+            current_century = current_year // 100 * 100
+            # First assume it's in the current century
+            year += current_century
+            # If the date is more than 50 years in the future, it should be interpreted
+            # as the most recent year in the past with the same last two digits
+            if year > current_year + 50:
+                year -= 100
+            # If the date is more than 50 years in the past, it should be interpreted
+            # as the most recent year in the future with the same last two digits
+            elif year < current_year - 50:
+                year += 100
+EOL
+
+tail -n +171 django/utils/http.py.bak >> temp_http.py && mv temp_http.py django/utils/http.py"
+18,21,1,1185626971974041,1185627153484863,0,0.0,"grep -A 20 ""def parse_http_date"" django/utils/http.py"
+19,22,1,1185627153493008,1185627340373959,1,1.0,"cat django/utils/http.py.bak | head -n 157 > temp_http.py && cat >> temp_http.py << 'EOL'
+def parse_http_date(date):
+    """"""
+    Parse a date format as specified by HTTP RFC7231 section 7.1.1.1.
+
+    The three formats allowed by the RFC are accepted, even if only the first
+    one is still in widespread use.
+
+    Return an integer expressed in seconds since the epoch, in UTC.
+    """"""
+    # email.utils.parsedate() does the job for RFC1123 dates; unfortunately
+    # RFC7231 makes it mandatory to support RFC850 dates too. So we roll
+    # our own RFC-compliant parsing.
+    for regex in RFC1123_DATE, RFC850_DATE, ASCTIME_DATE:
+        m = regex.match(date)
+        if m is not None:
+            break
+    else:
+        raise ValueError(""%r is not in a valid HTTP date format"" % date)
+    try:
+        year = int(m.group('year'))
+        if year < 100:
+            current_year = datetime.datetime.now().year
+            current_century = current_year // 100 * 100
+            # First assume it's in the current century
+            year += current_century
+            # If the date is more than 50 years in the future, it should be interpreted
+            # as the most recent year in the past with the same last two digits
+            if year > current_year + 50:
+                year -= 100
+            # If the date is more than 50 years in the past, it should be interpreted
+            # as the most recent year in the future with the same last two digits
+            elif year < current_year - 50:
+                year += 100
+EOL
+
+tail -n +171 django/utils/http.py.bak | grep -v ""^def parse_http_date"" >> temp_http.py && mv temp_http.py django/utils/http.py"
+20,23,1,1185627340380080,1185627523847676,0,0.0,"grep -n ""def parse_http_date"" django/utils/http.py"
+21,24,1,1185627523861882,1185627709018199,0,0.0,"cat django/utils/http.py.bak | sed -n '1,157p' > temp_http.py && cat >> temp_http.py << 'EOL'
+def parse_http_date(date):
+    """"""
+    Parse a date format as specified by HTTP RFC7231 section 7.1.1.1.
+
+    The three formats allowed by the RFC are accepted, even if only the first
+    one is still in widespread use.
+
+    Return an integer expressed in seconds since the epoch, in UTC.
+    """"""
+    # email.utils.parsedate() does the job for RFC1123 dates; unfortunately
+    # RFC7231 makes it mandatory to support RFC850 dates too. So we roll
+    # our own RFC-compliant parsing.
+    for regex in RFC1123_DATE, RFC850_DATE, ASCTIME_DATE:
+        m = regex.match(date)
+        if m is not None:
+            break
+    else:
+        raise ValueError(""%r is not in a valid HTTP date format"" % date)
+    try:
+        year = int(m.group('year'))
+        if year < 100:
+            current_year = datetime.datetime.now().year
+            current_century = current_year // 100 * 100
+            # First assume it's in the current century
+            year += current_century
+            # If the date is more than 50 years in the future, it should be interpreted
+            # as the most recent year in the past with the same last two digits
+            if year > current_year + 50:
+                year -= 100
+            # If the date is more than 50 years in the past, it should be interpreted
+            # as the most recent year in the future with the same last two digits
+            elif year < current_year - 50:
+                year += 100
+EOL
+
+cat django/utils/http.py.bak | sed -n '171,$p' | sed '/^def parse_http_date/d' >> temp_http.py && mv temp_http.py django/utils/http.py"
+22,25,1,1185627709021455,1185627892345661,0,0.0,"grep -n ""def parse_http_date"" django/utils/http.py"
+23,26,1,1185627892360269,1185628075191808,2,2.0,"sed -i '/import calendar/a import datetime' django/utils/http.py && sed -i '/if year < 100:/,/^        month = MONTHS.index/ {/if year < 100:/c\
+        if year < 100:\
+            current_year = datetime.datetime.now().year\
+            current_century = current_year // 100 * 100\
+            # First assume it\'s in the current century\
+            year += current_century\
+            # If the date is more than 50 years in the future, it should be interpreted\
+            # as the most recent year in the past with the same last two digits\
+            if year > current_year + 50:\
+                year -= 100\
+            # If the date is more than 50 years in the past, it should be interpreted\
+            # as the most recent year in the future with the same last two digits\
+            elif year < current_year - 50:\
+                year += 100' django/utils/http.py"
+24,27,1,1185628075199202,1185628268304631,255,255.0,"perl -i.bak -pe 'if($. == 3){s/$/\nimport datetime/}' django/utils/http.py && perl -i -pe 's/(\s+if year < 100:\s*year = )int\(m\.group\(\x27year\x27\)\) < 70:\s*year \+= 2000\s*else:\s*year \+= 1900/\1\n\1            current_year = datetime.datetime.now().year\n\1            current_century = current_year // 100 * 100\n\1            # First assume it\'s in the current century\n\1            year += current_century\n\1            # If the date is more than 50 years in the future, it should be interpreted\n\1            # as the most recent year in the past with the same last two digits\n\1            if year > current_year + 50:\n\1                year -= 100\n\1            # If the date is more than 50 years in the past, it should be interpreted\n\1            # as the most recent year in the future with the same last two digits\n\1            elif year < current_year - 50:\n\1                year += 100/' django/utils/http.py"
+25,28,1,1185628268313708,1185628473446240,0,0.0,"cat > fix_http_date.py << 'EOL'
+import re
+
+def fix_parse_http_date():
+    # Read the file
+    with open('django/utils/http.py', 'r') as f:
+        lines = f.readlines()
+    
+    # Make a backup
+    with open('django/utils/http.py.bak2', 'w') as f:
+        f.writelines(lines)
+    
+    # Ensure datetime is imported
+    datetime_imported = False
+    for i, line in enumerate(lines):
+        if 'import datetime' in line:
+            datetime_imported = True
+            break
+        if 'import calendar' in line and not datetime_imported:
+            lines.insert(i + 1, 'import datetime\n')
+            break
+    
+    # Find the parse_http_date function
+    start_idx = None
+    for i, line in enumerate(lines):
+        if 'def parse_http_date' in line:
+            start_idx = i
+            break
+    
+    if start_idx is None:
+        print(""Could not find parse_http_date function"")
+        return
+    
+    # Find the year handling block
+    year_block_start = None
+    year_block_end = None
+    for i in range(start_idx, len(lines)):
+        if 'year = int(m.group(\'year\'))' in lines[i] and 'if year < 100:' in lines[i+1]:
+            year_block_start = i + 1
+            # Find the end of the if block
+            indent = len(lines[year_block_start]) - len(lines[year_block_start].lstrip())
+            for j in range(year_block_start + 1, len(lines)):
+                if lines[j].strip() == '' or (len(lines[j]) - len(lines[j].lstrip()) <= indent and not lines[j].lstrip().startswith('#')):
+                    year_block_end = j
+                    break
+            break
+    
+    if year_block_start is None or year_block_end is None:
+        print(""Could not find year handling block"")
+        return
+    
+    # New code for two-digit year handling
+    new_code = [
+        '        if year < 100:\n',
+        '            current_year = datetime.datetime.now().year\n',
+        '            current_century = current_year // 100 * 100\n',
+        '            # First assume it\'s in the current century\n',
+        '            year += current_century\n',
+        '            # If the date is more than 50 years in the future, it should be interpreted\n',
+        '            # as the most recent year in the past with the same last two digits\n',
+        '            if year > current_year + 50:\n',
+        '                year -= 100\n',
+        '            # If the date is more than 50 years in the past, it should be interpreted\n',
+        '            # as the most recent year in the future with the same last two digits\n',
+        '            elif year < current_year - 50:\n',
+        '                year += 100\n'
+    ]
+    
+    # Replace the old code with the new code
+    lines[year_block_start:year_block_end] = new_code
+    
+    # Write the modified content back
+    with open('django/utils/http.py', 'w') as f:
+        f.writelines(lines)
+    
+    print(""Successfully updated parse_http_date function"")
+
+if __name__ == '__main__':
+    fix_parse_http_date()
+EOL
+
+python fix_http_date.py"
+26,29,1,1185628473452251,1185628651295035,0,0.0,"grep -A 15 ""if year < 100:"" django/utils/http.py"
+27,30,1,1185628651302660,1185628833656570,0,0.0,"grep -n ""def parse_http_date"" django/utils/http.py"
+28,31,1,1185628833663753,1185629026883186,0,0.0,"cat django/utils/http.py | grep -v ""^def parse_http_date"" | grep -v ""^    \""\""\"""" | grep -v ""^    Parse a date format"" > temp1.py && cat django/utils/http.py.bak | grep ""^def parse_http_date"" -A 5 | head -6 > temp2.py && cat temp2.py >> temp1.py && cat django/utils/http.py | sed -n '/^        month = MONTHS/,/^    except/p' >> temp1.py && mv temp1.py django/utils/http.py && rm temp2.py"
+29,32,1,1185629026885941,1185629205231722,0,0.0,"grep -A 20 ""def parse_http_date"" django/utils/http.py"
+30,33,1,1185629205243183,1185629386174510,0,0.0,"cat > final_http.py << 'EOL'
+import base64
+import calendar
+import datetime
+import re
+import unicodedata
+import warnings
+from binascii import Error as BinasciiError
+from email.utils import formatdate
+from urllib.parse import (
+    ParseResult, SplitResult, _coerce_args, _splitnetloc, _splitparams, quote,
+    quote_plus, scheme_chars, unquote, unquote_plus,
+    urlencode as original_urlencode, uses_params,
+)
+
+from django.core.exceptions import TooManyFieldsSent
+from django.utils.datastructures import MultiValueDict
+from django.utils.deprecation import RemovedInDjango40Warning
+from django.utils.functional import keep_lazy_text
+
+def parse_http_date(date):
+    """"""
+    Parse a date format as specified by HTTP RFC7231 section 7.1.1.1.
+
+    The three formats allowed by the RFC are accepted, even if only the first
+    one is still in widespread use.
+
+    Return an integer expressed in seconds since the epoch, in UTC.
+    """"""
+    # email.utils.parsedate() does the job for RFC1123 dates; unfortunately
+    # RFC7231 makes it mandatory to support RFC850 dates too. So we roll
+    # our own RFC-compliant parsing.
+    for regex in RFC1123_DATE, RFC850_DATE, ASCTIME_DATE:
+        m = regex.match(date)
+        if m is not None:
+            break
+    else:
+        raise ValueError(""%r is not in a valid HTTP date format"" % date)
+    try:
+        year = int(m.group('year'))
+        if year < 100:
+            current_year = datetime.datetime.now().year
+            current_century = current_year // 100 * 100
+            # First assume it's in the current century
+            year += current_century
+            # If the date is more than 50 years in the future, it should be interpreted
+            # as the most recent year in the past with the same last two digits
+            if year > current_year + 50:
+                year -= 100
+            # If the date is more than 50 years in the past, it should be interpreted
+            # as the most recent year in the future with the same last two digits
+            elif year < current_year - 50:
+                year += 100
+        month = MONTHS.index(m.group('mon').lower()) + 1
+        day = int(m.group('day'))
+        hour = int(m.group('hour'))
+        min = int(m.group('min'))
+        sec = int(m.group('sec'))
+        result = datetime.datetime(year, month, day, hour, min, sec)
+        return calendar.timegm(result.utctimetuple())
+    except Exception as exc:
+        raise ValueError(""%r is not a valid date"" % date) from exc
+
+# Rest of the file follows...
+EOL
+
+cat django/utils/http.py.bak | grep -A 100 ""def parse_http_date_safe"" | tail -n +2 >> final_http.py && mv final_http.py django/utils/http.py"
+31,34,1,1185629386178427,1185629567325377,0,0.0,"grep -A 20 ""def parse_http_date"" django/utils/http.py"
+32,35,1,1185629567328393,1185629749396628,0,0.0,"grep -A 15 ""if year < 100:"" django/utils/http.py"
+33,36,1,1185629749405024,1185629993219577,0,0.0,"cat > test_date.py << 'EOL'
+from django.utils.http import parse_http_date
+from datetime import datetime
+
+current_year = datetime.now().year
+print(f'Current year: {current_year}')
+
+# Test cases to verify the fix
+test_cases = [
+    (24, ""Recent past - should be 2024""),
+    (70, ""Future date - should be 2070 if within 50 years, otherwise 1970""),
+    (85, ""Distant past - should be 1985""),
+    (30, ""Future date - should be 2030 if within 50 years, otherwise 1930""),
+]
+
+for year_2d, description in test_cases:
+    year_str = f'{year_2d:02d}'
+    date_str = f'Wednesday, 16-Aug-{year_str} 12:00:00 GMT'
+    print(f'\nParsing: {date_str} ({description})')
+    try:
+        timestamp = parse_http_date(date_str)
+        dt = datetime.utcfromtimestamp(timestamp)
+        print(f'Parsed year: {dt.year}')
+        years_diff = abs(current_year - dt.year)
+        when = ""future"" if dt.year > current_year else ""past""
+        print(f'Years from current: {years_diff} ({when})')
+        
+        # Check if the RFC 7231 rule is followed
+        expected_year = current_year // 100 * 100 + year_2d
+        if expected_year > current_year + 50:
+            expected_year -= 100
+        elif expected_year < current_year - 50:
+            expected_year += 100
+        print(f'RFC 7231 expected: {expected_year}')
+        print(f'Correct: {dt.year == expected_year}')
+    except Exception as e:
+        print(f'Error: {e}')
+EOL
+
+python test_date.py"
+34,37,1,1185629993232552,1185630231754296,0,0.0,"cat > test_date.py << 'EOL'
+import sys
+sys.path.append('/testbed')
+
+from django.utils.http import parse_http_date
+from datetime import datetime
+
+current_year = datetime.now().year
+print(f'Current year: {current_year}')
+
+# Test cases to verify the fix
+test_cases = [
+    (24, ""Recent past - should be 2024""),
+    (70, ""Future date - should be 2070 if within 50 years, otherwise 1970""),
+    (85, ""Distant past - should be 1985""),
+    (30, ""Future date - should be 2030 if within 50 years, otherwise 1930""),
+]
+
+for year_2d, description in test_cases:
+    year_str = f'{year_2d:02d}'
+    date_str = f'Wednesday, 16-Aug-{year_str} 12:00:00 GMT'
+    print(f'\nParsing: {date_str} ({description})')
+    try:
+        timestamp = parse_http_date(date_str)
+        dt = datetime.utcfromtimestamp(timestamp)
+        print(f'Parsed year: {dt.year}')
+        years_diff = abs(current_year - dt.year)
+        when = ""future"" if dt.year > current_year else ""past""
+        print(f'Years from current: {years_diff} ({when})')
+        
+        # Check if the RFC 7231 rule is followed
+        expected_year = current_year // 100 * 100 + year_2d
+        if expected_year > current_year + 50:
+            expected_year -= 100
+        elif expected_year < current_year - 50:
+            expected_year += 100
+        print(f'RFC 7231 expected: {expected_year}')
+        print(f'Correct: {dt.year == expected_year}')
+    except Exception as e:
+        print(f'Error: {e}')
+EOL
+
+python test_date.py"
+35,38,1,1185630231762021,1185630475043061,0,0.0,"cat > test_date.py << 'EOL'
+import sys
+sys.path.append('/testbed')
+
+# Import the entire module to get all the constants
+from django.utils import http
+from datetime import datetime
+
+current_year = datetime.now().year
+print(f'Current year: {current_year}')
+
+# Test with a date that should be interpreted as 2024
+date_str = 'Wednesday, 16-Aug-24 12:00:00 GMT'
+print(f'\nParsing: {date_str}')
+try:
+    timestamp = http.parse_http_date(date_str)
+    dt = datetime.utcfromtimestamp(timestamp)
+    print(f'Parsed year: {dt.year}')
+    
+    # Test with a date that according to RFC 7231 should be interpreted as 1970 (since 2070 is more than 50 years in future from 2026)
+    date_str = 'Wednesday, 16-Aug-70 12:00:00 GMT'
+    print(f'\nParsing: {date_str}')
+    timestamp = http.parse_http_date(date_str)
+    dt = datetime.utcfromtimestamp(timestamp)
+    print(f'Parsed year: {dt.year}')
+    
+    # The year 2070 is 44 years in the future from 2026, which is less than 50 years,
+    # so it should be interpreted as 2070, not 1970
+    years_diff = dt.year - current_year
+    print(f'Years in future: {years_diff}')
+    print(f'Correct interpretation: {dt.year == 2070}')
+    
+except Exception as e:
+    print(f'Error: {e}')
+EOL
+
+python test_date.py"
+36,39,1,1185630475051677,1185630658449647,0,0.0,"grep -n ""RFC1123_DATE"" django/utils/http.py"
+37,40,1,1185630658455868,1185630895966145,0,0.0,"cat > test_date.py << 'EOL'
+import sys
+sys.path.append('/testbed')
+
+# Import the module directly
+import django.utils.http as http
+from datetime import datetime
+
+current_year = datetime.now().year
+print(f'Current year: {current_year}')
+
+# Test with a date that should be interpreted as 2024
+date_str = 'Wednesday, 16-Aug-24 12:00:00 GMT'
+print(f'\nParsing: {date_str}')
+try:
+    timestamp = http.parse_http_date(date_str)
+    dt = datetime.utcfromtimestamp(timestamp)
+    print(f'Parsed year: {dt.year}')
+    
+    # Test with a date that should be 2070 (not 1970) since it's within 50 years of 2026
+    date_str = 'Wednesday, 16-Aug-70 12:00:00 GMT'
+    print(f'\nParsing: {date_str}')
+    timestamp = http.parse_http_date(date_str)
+    dt = datetime.utcfromtimestamp(timestamp)
+    print(f'Parsed year: {dt.year}')
+    
+    # Verify it's 2070, not 1970
+    years_diff = dt.year - current_year
+    print(f'Years in future: {years_diff}')
+    print(f'Correct interpretation: {dt.year == 2070}')
+    
+except Exception as e:
+    print(f'Error: {e}')
+EOL
+
+python test_date.py"
+38,41,1,1185630895980402,1185631077895590,0,0.0,"grep -n ""RFC1123_DATE\|RFC850_DATE\|ASCTIME_DATE"" django/utils/http.py"
+39,42,1,1185631077901050,1185631256199106,0,0.0,head -n 50 django/utils/http.py
+40,43,1,1185631256206360,1185631441953047,0,0.0,"cp django/utils/http.py.bak django/utils/http.py && grep -n ""RFC1123_DATE"" django/utils/http.py"
+41,44,1,1185631441967063,1185631622662969,0,0.0,"grep -n ""RFC1123_DATE\|RFC850_DATE\|ASCTIME_DATE"" django/utils/http.py | head -20"
+42,45,1,1185631622667277,1185631806255062,0,0.0,head -n 100 django/utils/http.py
+43,46,1,1185631806263769,1185631990997299,0,0.0,cp django/utils/http.py.bak django/utils/http.py && head -n 50 django/utils/http.py
+44,47,1,1185631991004653,1185632166429344,2,2.0,"cp django/utils/http.py.bak django/utils/http.py && cat django/utils/http.py | grep -v ""^$("" > temp.py && mv temp.py django/utils/http.py"
+45,48,1,1185632166433051,1185632351882857,0,0.0,cp django/utils/http.py.bak django/utils/http.py && sed -i '/^$(.*$/d' django/utils/http.py
+46,49,1,1185632351886744,1185632530771209,0,0.0,head -n 20 django/utils/http.py
+47,50,1,1185632530781267,1185632709307700,0,0.0,"grep -n ""RFC1123_DATE\|RFC850_DATE\|ASCTIME_DATE"" django/utils/http.py"
+48,51,1,1185632709312539,1185632890577389,0,0.0,head -n 60 django/utils/http.py
+49,52,1,1185632890584513,1185633074387475,1,1.0,"cp django/utils/http.py.bak django/utils/http.py && grep -n ""^import"" django/utils/http.py"
+50,53,1,1185633074390701,1185633260908657,0,0.0,cat django/utils/http.py | head -n 5
+51,54,1,1185633260970307,1185633440876012,0,0.0,"cat > django/utils/http.py << 'EOL'
+import base64
+import calendar
+import datetime
+import re
+import unicodedata
+import warnings
+from binascii import Error as BinasciiError
+from email.utils import formatdate
+from urllib.parse import (
+    ParseResult, SplitResult, _coerce_args, _splitnetloc, _splitparams, quote,
+    quote_plus, scheme_chars, unquote, unquote_plus,
+    urlencode as original_urlencode, uses_params,
+)
+
+from django.core.exceptions import TooManyFieldsSent
+from django.utils.datastructures import MultiValueDict
+from django.utils.deprecation import RemovedInDjango40Warning
+from django.utils.functional import keep_lazy_text
+
+# based on RFC 7232, Appendix C
+ETAG_MATCH = re.compile(r'''
+    \A(      # start of string and capture group
+    (?:W/)?  # optional weak indicator
+    ""        # opening quote
+    [^\""]*    # any sequence of non-quote characters
+    ""        # end quote
+    )\Z      # end of string and capture group
+''', re.X)
+
+MONTHS = 'jan feb mar apr may jun jul aug sep oct nov dec'.split()
+__D = r'(?P<day>\d{2})'
+__D2 = r'(?P<day>[ \d]\d)'
+__M = r'(?P<mon>\w{3})'
+__Y = r'(?P<year>\d{4})'
+__Y2 = r'(?P<year>\d{2})'
+__T = r'(?P<hour>\d{2}):(?P<min>\d{2}):(?P<sec>\d{2})'
+RFC1123_DATE = re.compile(r'^\w{3}, %s %s %s %s GMT$' % (__D, __M, __Y, __T))
+RFC850_DATE = re.compile(r'^\w{6,9}, %s-%s-%s %s GMT$' % (__D, __M, __Y2, __T))
+ASCTIME_DATE = re.compile(r'^\w{3} %s %s %s %s$' % (__M, __D2, __T, __Y))
+
+RFC3986_GENDELIMS = "":/?#[]@""
+RFC3986_SUBDELIMS = ""!$&'()*+,;=""
+
+FIELDS_MATCH = re.compile('[&;]')
+
+
+def parse_http_date(date):
+    """"""
+    Parse a date format as specified by HTTP RFC7231 section 7.1.1.1.
+
+    The three formats allowed by the RFC are accepted, even if only the first
+    one is still in widespread use.
+
+    Return an integer expressed in seconds since the epoch, in UTC.
+    """"""
+    # email.utils.parsedate() does the job for RFC1123 dates; unfortunately
+    # RFC7231 makes it mandatory to support RFC850 dates too. So we roll
+    # our own RFC-compliant parsing.
+    for regex in RFC1123_DATE, RFC850_DATE, ASCTIME_DATE:
+        m = regex.match(date)
+        if m is not None:
+            break
+    else:
+        raise ValueError(""%r is not in a valid HTTP date format"" % date)
+    try:
+        year = int(m.group('year'))
+        if year < 100:
+            current_year = datetime.datetime.now().year
+            current_century = current_year // 100 * 100
+            # First assume it's in the current century
+            year += current_century
+            # If the date is more than 50 years in the future, it should be interpreted
+            # as the most recent year in the past with the same last two digits
+            if year > current_year + 50:
+                year -= 100
+            # If the date is more than 50 years in the past, it should be interpreted
+            # as the most recent year in the future with the same last two digits
+            elif year < current_year - 50:
+                year += 100
+        month = MONTHS.index(m.group('mon').lower()) + 1
+        day = int(m.group('day'))
+        hour = int(m.group('hour'))
+        min = int(m.group('min'))
+        sec = int(m.group('sec'))
+        result = datetime.datetime(year, month, day, hour, min, sec)
+        return calendar.timegm(result.utctimetuple())
+    except Exception as exc:
+        raise ValueError(""%r is not a valid date"" % date) from exc
+
+EOL"
+52,55,1,1185633440882194,1185633620369817,0,0.0,"cat >> django/utils/http.py << 'EOL'
+
+def parse_http_date_safe(date):
+    """"""
+    Same as parse_http_date, but return None if the input is invalid.
+    """"""
+    try:
+        return parse_http_date(date)
+    except Exception:
+        return None
+
+
+def urlencode(query, doseq=False):
+    """"""
+    A version of Python's urllib.parse.urlencode() function that can operate on
+    MultiValueDict and non-string values.
+    """"""
+    if isinstance(query, MultiValueDict):
+        query = query.lists()
+    elif hasattr(query, 'items'):
+        query = query.items()
+    query_params = []
+    for key, value in query:
+        if value is None:
+            raise TypeError(
+                ""Cannot encode None for key '%s' in a query string. Did you ""
+                ""mean to pass an empty string or omit the value?"" % key
+            )
+        elif not doseq or isinstance(value, (str, bytes)):
+            query_val = value
+        else:
+            try:
+                itr = iter(value)
+            except TypeError:
+                query_val = value
+            else:
+                # Consume generators and iterators, when doseq=True, to
+                # work around https://bugs.python.org/issue31706.
+                query_val = []
+                for item in itr:
+                    if item is None:
+                        raise TypeError(
+                            ""Cannot encode None for key '%s' in a query ""
+                            ""string. Did you mean to pass an empty string or ""
+                            ""omit the value?"" % key
+                        )
+                    elif not isinstance(item, bytes):
+                        item = str(item)
+                    query_val.append(item)
+        query_params.append((key, query_val))
+    return original_urlencode(query_params, doseq)
+
+
+def http_date(epoch_seconds=None):
+    """"""
+    Format the time to match the RFC1123 date format as specified by HTTP
+    RFC7231 section 7.1.1.1.
+
+    `epoch_seconds` is a floating point number expressed in seconds since the
+    epoch, in UTC - such as that outputted by time.time(). If set to None, it
+    defaults to the current time.
+
+    Output a string in the format 'Wdy, DD Mon YYYY HH:MM:SS GMT'.
+    """"""
+    return formatdate(epoch_seconds, usegmt=True)
+
+
+def parse_http_date_safe(date):
+    """"""
+    Same as parse_http_date, but return None if the input is invalid.
+    """"""
+    try:
+        return parse_http_date(date)
+    except Exception:
+        return None
+
+
+@keep_lazy_text
+def urlquote(url, safe='/'):
+    """"""
+    A legacy compatibility wrapper to Python's urllib.parse.quote() function.
+    (was used for unicode handling on Python 2)
+    """"""
+    warnings.warn(
+        'django.utils.http.urlquote() is deprecated in favor of '
+        'urllib.parse.quote().',
+        RemovedInDjango40Warning, stacklevel=2,
+    )
+    return quote(url, safe)
+
+
+@keep_lazy_text
+def urlquote_plus(url, safe=''):
+    """"""
+    A legacy compatibility wrapper to Python's urllib.parse.quote_plus()
+    function. (was used for unicode handling on Python 2)
+    """"""
+    warnings.warn(
+        'django.utils.http.urlquote_plus() is deprecated in favor of '
+        'urllib.parse.quote_plus(),',
+        RemovedInDjango40Warning, stacklevel=2,
+    )
+    return quote_plus(url, safe)
+
+
+@keep_lazy_text
+def urlunquote(quoted_url):
+    """"""
+    A legacy compatibility wrapper to Python's urllib.parse.unquote() function.
+    (was used for unicode handling on Python 2)
+    """"""
+    warnings.warn(
+        'django.utils.http.urlunquote() is deprecated in favor of '
+        'urllib.parse.unquote().',
+        RemovedInDjango40Warning, stacklevel=2,
+    )
+    return unquote(quoted_url)
+
+
+@keep_lazy_text
+def urlunquote_plus(quoted_url):
+    """"""
+    A legacy compatibility wrapper to Python's urllib.parse.unquote_plus()
+    function. (was used for unicode handling on Python 2)
+    """"""
+    warnings.warn(
+        'django.utils.http.urlunquote_plus() is deprecated in favor of '
+        'urllib.parse.unquote_plus().',
+        RemovedInDjango40Warning, stacklevel=2,
+    )
+    return unquote_plus(quoted_url)
+
+
+@keep_lazy_text
+def urlencode(query, doseq=False):
+    """"""
+    A version of Python's urllib.parse.urlencode() function that can operate on
+    MultiValueDict and non-string values.
+    """"""
+    if isinstance(query, MultiValueDict):
+        query = query.lists()
+    elif hasattr(query, 'items'):
+        query = query.items()
+    query_params = []
+    for key, value in query:
+        if value is None:
+            raise TypeError(
+                ""Cannot encode None for key '%s' in a query string. Did you ""
+                ""mean to pass an empty string or omit the value?"" % key
+            )
+        elif not doseq or isinstance(value, (str, bytes)):
+            query_val = value
+        else:
+            try:
+                itr = iter(value)
+            except TypeError:
+                query_val = value
+            else:
+                # Consume generators and iterators, when doseq=True, to
+                # work around https://bugs.python.org/issue31706.
+                query_val = []
+                for item in itr:
+                    if item is None:
+                        raise TypeError(
+                            ""Cannot encode None for key '%s' in a query ""
+                            ""string. Did you mean to pass an empty string or ""
+                            ""omit the value?"" % key
+                        )
+                    elif not isinstance(item, bytes):
+                        item = str(item)
+                    query_val.append(item)
+        query_params.append((key, query_val))
+    return original_urlencode(query_params, doseq)
+
+
+def http_date(epoch_seconds=None):
+    """"""
+    Format the time to match the RFC1123 date format as specified by HTTP
+    RFC7231 section 7.1.1.1.
+
+    `epoch_seconds` is a floating point number expressed in seconds since the
+    epoch, in UTC - such as that outputted by time.time(). If set to None, it
+    defaults to the current time.
+
+    Output a string in the format 'Wdy, DD Mon YYYY HH:MM:SS GMT'.
+    """"""
+    return formatdate(epoch_seconds, usegmt=True)
+
+
+def urlsafe_base64_encode(s):
+    """"""
+    Encode a bytestring to a base64 string for use in URLs-safe.
+
+    Strip = signs from the output.
+    """"""
+    return base64.urlsafe_b64encode(s).rstrip(b'\n=')
+
+
+def urlsafe_base64_decode(s):
+    """"""
+    Decode a base64 encoded string.
+
+    Add back any trailing = signs before decoding.
+    """"""
+    s = as_bytes(s)
+    try:
+        return base64.urlsafe_b64decode(s + b'=' * (-len(s) % 4))
+    except (LookupError, BinasciiError) as e:
+        raise ValueError(""Illegal base64 string: %r"" % s) from e
+
+
+def base36_to_int(s):
+    """"""
+    Convert a base 36 string to an int. Raise ValueError if the input won't fit
+    into an int.
+    """"""
+    # To prevent overconsumption of server resources, reject any
+    # base36 string that is longer than 13 base36 digits (13 digits
+    # is sufficient to base36-encode any 64-bit integer)
+    if len(s) > 13:
+        raise ValueError(""Base36 input too large"")
+    return int(s, 36)
+
+
+def int_to_base36(i):
+    """"""
+    Convert an integer to a base36 string.
+    """"""
+    char_set = '0123456789abcdefghijklmnopqrstuvwxyz'
+    if i < 0:
+        raise ValueError(""Negative base36 conversion input."")
+    if i < 36:
+        return char_set[i]
+    b36 = ''
+    while i != 0:
+        i, n = divmod(i, 36)
+        b36 = char_set[n] + b36
+    return b36
+
+
+def is_safe_url(url, allowed_hosts, require_https=False):
+    """"""
+    Return ``True`` if the url is a safe redirection (i.e. it doesn't point to
+    a different host and uses a safe scheme).
+
+    Always returns ``False`` on an empty url.
+    """"""
+    if not url:
+        return False
+    return _url_has_allowed_host_and_scheme(
+        url, allowed_hosts, require_https=require_https,
+    )
+
+
+def _is_safe_url(*args, **kwargs):
+    warnings.warn(
+        '_is_safe_url() is deprecated in favor of is_safe_url().',
+        RemovedInDjango40Warning, stacklevel=2,
+    )
+    return is_safe_url(*args, **kwargs)
+
+
+def _url_has_allowed_host_and_scheme(url, allowed_hosts, require_https=False):
+    # Chrome considers any URL with more than two slashes to be absolute, but
+    # urlparse is not so flexible. Treat any url with three slashes as unsafe.
+    if url.startswith('///'):
+        return False
+    try:
+        url_info = _urlparse(url)
+    except ValueError:  # e.g. invalid IPv6 addresses
+        return False
+    # Forbid URLs like http:///example.com - with a scheme, but without a hostname.
+    # In that URL, example.com is not the hostname but, a path component. However,
+    # Chrome will still consider example.com to be the hostname, so we must not
+    # allow this syntax.
+    if not url_info.netloc and url_info.scheme:
+        return False
+    # Forbid URLs that start with control characters. Some browsers (like
+    # Chrome) ignore quite a few control characters at the start of a
+    # URL and might consider the URL as scheme relative.
+    if unicodedata.category(url[0])[0] == 'C':
+        return False
+    scheme = url_info.scheme
+    # Consider URLs without a scheme (e.g. //example.com/p) to be http.
+    if not url_info.scheme and url_info.netloc:
+        scheme = 'http'
+    valid_schemes = ['https'] if require_https else ['http', 'https']
+    return ((not url_info.netloc or url_info.netloc in allowed_hosts) and
+            (not scheme or scheme in valid_schemes))
+
+
+def limited_parse_qsl(qs, keep_blank_values=False, encoding='utf-8',
+                      errors='replace', fields_limit=None):
+    """"""
+    Return a list of key/value tuples parsed from query string.
+
+    Copied from urlparse with an additional ""fields_limit"" argument.
+    Copyright (C) 2013 Python Software Foundation (see LICENSE.python).
+
+    Arguments:
+
+    qs: percent-encoded query string to be parsed
+
+    keep_blank_values: flag indicating whether blank values in
+        percent-encoded queries should be treated as blank strings. A
+        true value indicates that blanks should be retained as blank
+        strings. The default false value indicates that blank values
+        are to be ignored and treated as if they were  not included.
+
+    encoding and errors: specify how to decode percent-encoded sequences
+        into Unicode characters, as accepted by the bytes.decode() method.
+
+    fields_limit: maximum number of fields parsed or an exception
+        is raised. None means no limit and is the default.
+    """"""
+    if fields_limit:
+        pairs = FIELDS_MATCH.split(qs, fields_limit)
+        if len(pairs) > fields_limit:
+            raise TooManyFieldsSent(
+                'The number of GET/POST parameters exceeded '
+                'settings.DATA_UPLOAD_MAX_NUMBER_FIELDS.'
+            )
+    else:
+        pairs = FIELDS_MATCH.split(qs)
+    r = []
+    for name_value in pairs:
+        if not name_value:
+            continue
+        nv = name_value.split('=', 1)
+        if len(nv) != 2:
+            # Handle case of a control-name with no equal sign
+            if keep_blank_values:
+                nv.append('')
+            else:
+                continue
+        if nv[1] or keep_blank_values:
+            name = nv[0].replace('+', ' ')
+            name = unquote(name, encoding=encoding, errors=errors)
+            value = nv[1].replace('+', ' ')
+            value = unquote(value, encoding=encoding, errors=errors)
+            r.append((name, value))
+    return r
+
+
+def escape_leading_slashes(url):
+    """"""
+    If redirecting to an absolute path (two leading slashes), a slash must be
+    escaped to prevent browsers from handling the path as schemaless and
+    redirecting to another host.
+    """"""
+    if url.startswith('//'):
+        url = '/%2F{}'.format(url[2:])
+    return url
+
+EOL"
+53,56,1,1185633620377992,1185633867773469,0,0.0,"cat > test_date.py << 'EOL'
+import sys
+sys.path.append('/testbed')
+
+from django.utils import http
+from datetime import datetime
+
+current_year = datetime.now().year
+print(f'Current year: {current_year}')
+
+# Test with a date that should be interpreted as 2024
+date_str = 'Wednesday, 16-Aug-24 12:00:00 GMT'
+print(f'\nParsing: {date_str}')
+try:
+    timestamp = http.parse_http_date(date_str)
+    dt = datetime.utcfromtimestamp(timestamp)
+    print(f'Parsed year: {dt.year}')
+    
+    # Test with a date that should be 2070 (not 1970) since it's within 50 years of 2026
+    date_str = 'Wednesday, 16-Aug-70 12:00:00 GMT'
+    print(f'\nParsing: {date_str}')
+    timestamp = http.parse_http_date(date_str)
+    dt = datetime.utcfromtimestamp(timestamp)
+    print(f'Parsed year: {dt.year}')
+    
+    # Verify it's 2070, not 1970
+    years_diff = dt.year - current_year
+    print(f'Years in future: {years_diff}')
+    print(f'Correct interpretation: {dt.year == 2070}')
+    
+    # Test with a date that should be 1985 (not 2085) since 2085 is more than 50 years in future
+    date_str = 'Wednesday, 16-Aug-85 12:00:00 GMT'
+    print(f'\nParsing: {date_str}')
+    timestamp = http.parse_http_date(date_str)
+    dt = datetime.utcfromtimestamp(timestamp)
+    print(f'Parsed year: {dt.year}')
+    years_diff = current_year - dt.year
+    print(f'Years in past: {years_diff}')
+    print(f'Correct interpretation: {dt.year == 1985}')
+    
+except Exception as e:
+    print(f'Error: {e}')
+EOL
+
+python test_date.py"
+54,57,1,1185633867785873,1185634069518924,0,0.0,git diff -- django/utils/http.py > patch.txt
+55,58,1,1185634069523252,1185634251860249,0,0.0,cat patch.txt
+56,59,1,1185634251864037,1185634453439337,0,0.0,git checkout django/utils/http.py && cp django/utils/http.py.bak django/utils/http.py && git diff -- django/utils/http.py > patch.txt
+57,60,1,1185634453451781,1185634634749953,0,0.0,cat patch.txt
+58,61,1,1185634634760012,1185634824064364,0,0.0,"git diff -- django/utils/http.py | grep -A 20 ""def parse_http_date"" > patch.txt"
+59,62,1,1185634824070055,1185635004061716,0,0.0,cat patch.txt
+60,63,1,1185635004076163,1185635181527950,0,0.0,"echo ""--- a/django/utils/http.py\n+++ b/django/utils/http.py\n@@ -176,10 +176,18 @@ def parse_http_date(date):\n      try:\n          year = int(m.group('year'))\n          if year < 100:\n-            if year < 70:\n-                year += 2000\n-            else:\n-                year += 1900\n+            current_year = datetime.datetime.now().year\n+            current_century = current_year // 100 * 100\n+            # First assume it's in the current century\n+            year += current_century\n+            # If the date is more than 50 years in the future, it should be interpreted\n+            # as the most recent year in the past with the same last two digits\n+            if year > current_year + 50:\n+                year -= 100\n+            # If the date is more than 50 years in the past, it should be interpreted\n+            # as the most recent year in the future with the same last two digits\n+            elif year < current_year - 50:\n+                year += 100\n          month = MONTHS.index(m.group('mon').lower()) + 1"" > patch.txt"
+61,64,1,1185635181538660,1185635367106511,0,0.0,cat patch.txt
+62,65,1,1185635367174073,1185635553045367,0,0.0,"git diff -- django/utils/http.py > temp_patch.txt && grep -A 20 ""def parse_http_date"" temp_patch.txt > patch.txt && rm temp_patch.txt"
+63,66,1,1185635553050697,1185635738104476,0,0.0,cat patch.txt
+64,67,1,1185635738119484,1185635927725070,0,0.0,"echo -e ""--- a/django/utils/http.py\n+++ b/django/utils/http.py\n@@ -176,10 +176,18 @@ def parse_http_date(date):\n      try:\n          year = int(m.group('year'))\n          if year < 100:\n-            if year < 70:\n-                year += 2000\n-            else:\n-                year += 1900\n+            current_year = datetime.datetime.now().year\n+            current_century = current_year // 100 * 100\n+            # First assume it's in the current century\n+            year += current_century\n+            # If the date is more than 50 years in the future, it should be interpreted\n+            # as the most recent year in the past with the same last two digits\n+            if year > current_year + 50:\n+                year -= 100\n+            # If the date is more than 50 years in the past, it should be interpreted\n+            # as the most recent year in the future with the same last two digits\n+            elif year < current_year - 50:\n+                year += 100\n          month = MONTHS.index(m.group('mon').lower()) + 1"" > patch.txt"
+65,68,1,1185635927731772,1185636106123084,0,0.0,cat patch.txt
+66,69,1,1185636106196054,1185636288790193,0,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

@@ -1,0 +1,1904 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,1183862644067081,1183862911082386,0,0,ls -la
+1,2,1,1183862911094559,1183863104683992,1,1,"find django/db/models -type f -name ""*.py"" | grep -i choice"
+2,3,1,1183863104687508,1183863293328906,0,0,ls -la django/db/models/
+3,4,1,1183863293337973,1183863478334447,0,0,cat django/db/models/enums.py
+4,5,1,1183863478340338,1183863657781671,0,0,ls -la django/db/models/fields/
+5,6,1,1183863657807960,1183863844272456,0,0,"grep -A 20 ""class CharField"" django/db/models/fields/__init__.py"
+6,7,1,1183863844305057,1183864029678834,0,0,"grep -A 50 ""class Field"" django/db/models/fields/__init__.py"
+7,8,1,1183864029684565,1183864209668933,1,1,"grep -A 100 ""def __get__"" django/db/models/fields/__init__.py"
+8,9,1,1183864209675656,1183864392017968,1,1,"grep -A 30 ""class DeferredAttribute"" django/db/models/fields/__init__.py"
+9,10,1,1183864392041231,1183864592650258,0,0,"find django/db/models/fields -type f -exec grep -l ""DeferredAttribute"" {} \;"
+10,11,1,1183864592663172,1183864774012550,1,1,"grep -A 20 ""class DeferredAttribute"" django/db/models/fields/__init__.py"
+11,12,1,1183864774106917,1183864955008322,1,1,"grep -A 20 ""class DeferredAttribute"" django/db/models/fields/related.py"
+12,13,1,1183864955013442,1183865140495120,1,1,"grep -A 20 ""class DeferredAttribute"" django/db/models/fields/related_descriptors.py"
+13,14,1,1183865140502754,1183865336753137,0,0,"find django/db/models/fields -type f -exec grep -l ""def __get__"" {} \;"
+14,15,1,1183865336766772,1183865522443065,0,0,"grep -A 10 ""def __get__"" django/db/models/fields/related_descriptors.py | head -20"
+15,16,1,1183865522450909,1183865706285174,0,0,"grep -A 10 ""def __get__"" django/db/models/fields/files.py | head -20"
+16,17,1,1183865706292768,1183865888928840,0,0,"grep -A 10 ""def get_prep_value"" django/db/models/fields/__init__.py"
+17,18,1,1183865888938919,1183866071879100,0,0,"grep -A 10 ""def to_python"" django/db/models/fields/__init__.py"
+18,19,1,1183866071884460,1183866257590888,0,0,"cat > reproduce_issue.py << 'EOL'
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+class MyChoice(models.TextChoices):
+    FIRST_CHOICE = ""first"", _(""The first choice, it is"")
+    SECOND_CHOICE = ""second"", _(""The second choice, it is"")
+
+class MyObject(models.Model):
+    my_str_value = models.CharField(max_length=10, choices=MyChoice.choices)
+    
+    class Meta:
+        app_label = 'test'
+
+# Create an instance
+obj = MyObject(my_str_value=MyChoice.FIRST_CHOICE)
+print(f""Created object value type: {type(obj.my_str_value)}"")
+print(f""Created object value str(): {str(obj.my_str_value)}"")
+print(f""Created object value value: {obj.my_str_value.value if hasattr(obj.my_str_value, 'value') else 'no value attribute'}"")
+
+# Simulate saving and retrieving (which would call to_python)
+retrieved_value = obj.my_str_value  # This would be processed by to_python in real scenario
+print(f""Retrieved object value type: {type(retrieved_value)}"")
+print(f""Retrieved object value str(): {str(retrieved_value)}"")
+print(f""Retrieved object value value: {retrieved_value.value if hasattr(retrieved_value, 'value') else 'no value attribute'}"")
+EOL"
+19,20,1,1183866257597581,1183866873937457,1,1,python reproduce_issue.py
+20,21,1,1183866873953537,1183867055183948,0,0,"cat > reproduce_issue.py << 'EOL'
+import django
+from django.conf import settings
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+# Configure settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+        ],
+        USE_TZ=True,
+    )
+    django.setup()
+
+class MyChoice(models.TextChoices):
+    FIRST_CHOICE = ""first"", _(""The first choice, it is"")
+    SECOND_CHOICE = ""second"", _(""The second choice, it is"")
+
+class MyObject(models.Model):
+    my_str_value = models.CharField(max_length=10, choices=MyChoice.choices)
+    
+    class Meta:
+        app_label = 'test'
+
+# Create an instance
+obj = MyObject(my_str_value=MyChoice.FIRST_CHOICE)
+print(f""Created object value type: {type(obj.my_str_value)}"")
+print(f""Created object value str(): {str(obj.my_str_value)}"")
+print(f""Created object value value: {obj.my_str_value.value if hasattr(obj.my_str_value, 'value') else 'no value attribute'}"")
+
+# Simulate what happens when retrieving from database
+# In reality, this would go through to_python, but let's check the current behavior
+retrieved_value = obj.my_str_value
+print(f""Retrieved object value type: {type(retrieved_value)}"")
+print(f""Retrieved object value str(): {str(retrieved_value)}"")
+print(f""Retrieved object value value: {retrieved_value.value if hasattr(retrieved_value, 'value') else 'no value attribute'}"")
+EOL"
+21,22,1,1183867055202042,1183867651491791,0,0,python reproduce_issue.py
+22,23,1,1183867651507531,1183867834480965,2,2,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.bak && sed -i '/def to_python(self, value):/,+5c\
+    def to_python(self, value):\
+        """"""\
+        Convert the input value into the expected Python data type, raising\
+        django.core.exceptions.ValidationError if the data can\'t be converted.\
+        Return the converted value. Subclasses should override this.\
+        """"""\
+        if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):\
+            return value.value\
+        return value' django/db/models/fields/__init__.py"
+23,24,1,1183867834550264,1183868019654495,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.bak && sed -i ""s/def to_python(self, value):/def to_python(self, value):\\n        \""\""\""\\n        Convert the input value into the expected Python data type, raising\\n        django.core.exceptions.ValidationError if the data can't be converted.\\n        Return the converted value. Subclasses should override this.\\n        \""\""\""\\n        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):\\n            return value.value\\n        return value/"" django/db/models/fields/__init__.py"
+24,25,1,1183868019659564,1183868493976062,0,0,python reproduce_issue.py
+25,26,1,1183868494047295,1183868676380260,0,0,"cat > reproduce_issue.py << 'EOL'
+import django
+from django.conf import settings
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+# Configure settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+        ],
+        USE_TZ=True,
+    )
+    django.setup()
+
+class MyChoice(models.TextChoices):
+    FIRST_CHOICE = ""first"", _(""The first choice, it is"")
+    SECOND_CHOICE = ""second"", _(""The second choice, it is"")
+
+class MyObject(models.Model):
+    my_str_value = models.CharField(max_length=10, choices=MyChoice.choices)
+    
+    class Meta:
+        app_label = 'test'
+
+    def __str__(self):
+        return f""MyObject(my_str_value='{self.my_str_value}')""
+
+# Create and save an instance
+obj = MyObject.objects.create(my_str_value=MyChoice.FIRST_CHOICE)
+print(f""Created object: {obj}"")
+print(f""Created object value type: {type(obj.my_str_value)}"")
+print(f""Created object value str(): {str(obj.my_str_value)}"")
+
+# Retrieve the object from database
+retrieved_obj = MyObject.objects.get(pk=obj.pk)
+print(f""Retrieved object: {retrieved_obj}"")
+print(f""Retrieved object value type: {type(retrieved_obj.my_str_value)}"")
+print(f""Retrieved object value str(): {str(retrieved_obj.my_str_value)}"")
+EOL"
+26,27,1,1183868676384658,1183869151573217,1,1,python reproduce_issue.py
+27,28,1,1183869151578898,1183869337488838,0,0,"cat > reproduce_issue.py << 'EOL'
+import django
+from django.conf import settings
+from django.db import models
+from django.db import connection
+from django.core.management import call_command
+from django.utils.translation import gettext_lazy as _
+
+# Configure settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            '__main__',
+        ],
+        USE_TZ=True,
+    )
+    django.setup()
+
+class MyChoice(models.TextChoices):
+    FIRST_CHOICE = ""first"", _(""The first choice, it is"")
+    SECOND_CHOICE = ""second"", _(""The second choice, it is"")
+
+class MyObject(models.Model):
+    my_str_value = models.CharField(max_length=10, choices=MyChoice.choices)
+    
+    class Meta:
+        app_label = '__main__'
+
+    def __str__(self):
+        return f""MyObject(my_str_value='{self.my_str_value}')""
+
+# Create tables
+with connection.schema_editor() as schema_editor:
+    schema_editor.create_model(MyObject)
+
+# Create and save an instance
+obj = MyObject.objects.create(my_str_value=MyChoice.FIRST_CHOICE)
+print(f""Created object: {obj}"")
+print(f""Created object value type: {type(obj.my_str_value)}"")
+print(f""Created object value str(): {str(obj.my_str_value)}"")
+
+# Retrieve the object from database
+retrieved_obj = MyObject.objects.get(pk=obj.pk)
+print(f""Retrieved object: {retrieved_obj}"")
+print(f""Retrieved object value type: {type(retrieved_obj.my_str_value)}"")
+print(f""Retrieved object value str(): {str(retrieved_obj.my_str_value)}"")
+EOL"
+28,29,1,1183869337491543,1183869806094481,0,0,python reproduce_issue.py
+29,30,1,1183869806164777,1183869992557636,0,0,"grep -A 15 ""def get_db_prep_save"" django/db/models/fields/__init__.py"
+30,31,1,1183869992626971,1183870180095202,0,0,"grep -A 15 ""def get_db_prep_value"" django/db/models/fields/__init__.py"
+31,32,1,1183870180110480,1183870368995413,0,0,"grep -A 10 ""def value_from_object"" django/db/models/fields/__init__.py"
+32,33,1,1183870369006604,1183870556780497,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.bak2 && sed -i ""s/def to_python(self, value):/def to_python(self, value):\\n        \""\""\""\\n        Convert the input value into the expected Python data type, raising\\n        django.core.exceptions.ValidationError if the data can't be converted.\\n        Return the converted value. Subclasses should override this.\\n        \""\""\""\\n        # Handle enum values by extracting their value property\\n        if hasattr(value, 'value') and \\n           not isinstance(value, (str, int, float, bool, type(None))) and \\n           not isinstance(value, (models.TextChoices, models.IntegerChoices)):\\n            return value.value\\n        return value/"" django/db/models/fields/__init__.py"
+33,34,1,1183870556789023,1183870744602944,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.bak3 && sed -i ""s/def to_python(self, value):/def to_python(self, value):\\n        \""\""\""\\n        Convert the input value into the expected Python data type, raising\\n        django.core.exceptions.ValidationError if the data can't be converted.\\n        Return the converted value. Subclasses should override this.\\n        \""\""\""\\n        # Handle enum values by extracting their value property\\n        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):\\n            return value.value\\n        return value/"" django/db/models/fields/__init__.py"
+34,35,1,1183870744609466,1183871006543716,1,1,python reproduce_issue.py
+35,36,1,1183871006552412,1183871189470983,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.bak4 && sed -i ""/def to_python(self, value):/c\\
+    def to_python(self, value):\
+        \""\""\""\
+        Convert the input value into the expected Python data type, raising\
+        django.core.exceptions.ValidationError if the data can't be converted.\
+        Return the converted value. Subclasses should override this.\
+        \""\""\""\
+        # Handle enum values by extracting their value property\
+        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):\
+            return value.value\
+        return value"" django/db/models/fields/__init__.py"
+36,37,1,1183871189490349,1183871444751562,1,1,python reproduce_issue.py
+37,38,1,1183871444758816,1183871634447886,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.bak5 && sed -i ""/def to_python(self, value):/c\    def to_python(self, value):\n        \""\""\""\n        Convert the input value into the expected Python data type, raising\n        django.core.exceptions.ValidationError if the data can't be converted.\n        Return the converted value. Subclasses should override this.\n        \""\""\""\n        # Handle enum values by extracting their value property\n        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):\n            return value.value\n        return value"" django/db/models/fields/__init__.py"
+38,39,1,1183871634450531,1183871894462458,1,1,python reproduce_issue.py
+39,40,1,1183871894538936,1183872078892091,0,0,"cat > temp_patch.py << 'EOL'
+from django.db.models.fields import Field
+
+class FixedField(Field):
+    def to_python(self, value):
+        """"""
+        Convert the input value into the expected Python data type, raising
+        django.core.exceptions.ValidationError if the data can't be converted.
+        Return the converted value. Subclasses should override this.
+        """"""
+        # Handle enum values by extracting their value property
+        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):
+            return value.value
+        return value
+
+# Replace the original to_python method
+Field.to_python = FixedField.to_python.__func__
+EOL"
+40,41,1,1183872078902431,1183872262132043,0,0,"cat > fix_field.py << 'EOL'
+import re
+
+# Read the file
+with open('django/db/models/fields/__init__.py', 'r') as f:
+    content = f.read()
+
+# Find the to_python method
+pattern = r'def to_python\(self, value\):.*?return value'
+pattern = r'def to_python\(self, value\):[\s\S]*?return value'
+
+# Replace the method
+replacement = '''def to_python(self, value):
+        """"""
+        Convert the input value into the expected Python data type, raising
+        django.core.exceptions.ValidationError if the data can't be converted.
+        Return the converted value. Subclasses should override this.
+        """"""
+        # Handle enum values by extracting their value property
+        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):
+            return value.value
+        return value'''
+
+# Use regex to find and replace the method
+import re
+content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+
+# Write the file back
+with open('django/db/models/fields/__init__.py', 'w') as f:
+    f.write(content)
+EOL"
+41,42,1,1183872262148324,1183872469248945,1,1,python fix_field.py
+42,43,1,1183872469257551,1183872654037485,0,0,"cat > fix_field.py << 'EOL'
+import re
+
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# Find the to_python method
+pattern = r'def to_python\(self, value\):[\s\S]*?return value'
+
+# Replace the method
+replacement = '''def to_python(self, value):
+        """"""
+        Convert the input value into the expected Python data type, raising
+        django.core.exceptions.ValidationError if the data can't be converted.
+        Return the converted value. Subclasses should override this.
+        """"""
+        # Handle enum values by extracting their value property
+        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):
+            return value.value
+        return value'''
+
+# Use regex to find and replace the method
+content = re.sub(pattern, replacement, content, flags=re.DOTALL)
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.write(content)
+EOL"
+43,44,1,1183872654046932,1183872913506031,1,1,python reproduce_issue.py
+44,45,1,1183872913517903,1183873095622446,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py"
+45,46,1,1183873095634558,1183873279445218,0,0,"cat > fix_field.py << 'EOL'
+import re
+
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# Find the to_python method - look for the method definition and its body
+pattern = r'def to_python\(self, value\):[\s\S]*?return value(?![\s\S]*def to_python)'
+
+# The correct replacement for the to_python method
+replacement = '''def to_python(self, value):
+        """"""
+        Convert the input value into the expected Python data type, raising
+        django.core.exceptions.ValidationError if the data can't be converted.
+        Return the converted value. Subclasses should override this.
+        """"""
+        # Handle enum values by extracting their value property
+        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):
+            return value.value
+        return value'''
+
+# Use regex to find and replace just the first occurrence of the method
+content = re.sub(pattern, replacement, content, count=1)
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.write(content)
+EOL"
+46,47,1,1183873279461078,1183873545235353,0,0,python fix_field.py
+47,48,1,1183873545239010,1183873734665874,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py | head -20"
+48,49,1,1183873734680772,1183873917237194,2,2,"sed -i '/def to_python(self, value):/,/return value/ {\n    /def to_python(self, value):/! {\n        /return value/!d\n    }\n}' django/db/models/fields/__init__.py && sed -i '/def to_python(self, value):/a \\n        # Handle enum values by extracting their value property\\n        if hasattr(value, \'value\') and not isinstance(value, (str, int, float, bool, type(None))):\\n            return value.value' django/db/models/fields/__init__.py"
+49,50,1,1183873917242504,1183874100874850,0,0,"cat > fix_field.py << 'EOL'
+import re
+
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the to_python method
+in_method = False
+method_start = -1
+method_end = -1
+
+for i, line in enumerate(lines):
+    if 'def to_python(self, value):' in line:
+        method_start = i
+        in_method = True
+    elif in_method and 'return value' in line and line.strip().startswith('return '):
+        method_end = i + 1
+        break
+
+class FixedField:
+    def to_python(self, value):
+        """"""
+        Convert the input value into the expected Python data type, raising
+        django.core.exceptions.ValidationError if the data can't be converted.
+        Return the converted value. Subclasses should override this.
+        """"""
+        # Handle enum values by extracting their value property
+        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):
+            return value.value
+        return value
+
+# Format the replacement method with proper indentation
+import inspect
+method_lines = inspect.getsource(FixedField.to_python).split('\n')
+# Remove the first line (class method definition) and add proper indentation
+method_body = ['    ' + line for line in method_lines[1:]]
+
+# Replace the method
+new_lines = lines[:method_start] + method_body + lines[method_end:]
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+EOL"
+50,51,1,1183874100877836,1183874322959050,0,0,python fix_field.py
+51,52,1,1183874322963168,1183874509503265,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py | head -20"
+52,53,1,1183874509509788,1183874696453009,1,1,"grep -n ""def to_python"" django/db/models/fields/__init__.py"
+53,54,1,1183874696475702,1183874879082068,0,0,"grep -A 50 ""class Field"" django/db/models/fields/__init__.py"
+54,55,1,1183874879098779,1183875065665406,0,0,"grep -n ""def to_python"" django/db/models/fields/*.py"
+55,56,1,1183875065695452,1183875249747704,0,0,"grep -A 10 ""def to_python"" django/db/models/fields/related.py"
+56,57,1,1183875249751291,1183875429893606,1,1,"grep -A 5 -B 5 ""return value"" django/db/models/fields/__init__.py | grep -A 15 ""def to_python"""
+57,58,1,1183875429899577,1183875613507427,0,0,"grep -n ""return value"" django/db/models/fields/__init__.py"
+58,59,1,1183875613518207,1183875793926690,0,0,"cat > fix_field.py << 'EOL'
+import re
+
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# Find the Field class
+field_class_pattern = r'class Field\([^:]*\):[\s\S]*?\n(?=class |$)'
+field_class_match = re.search(field_class_pattern, content)
+
+if field_class_match:
+    field_class = field_class_match.group(0)
+    
+    # Find the to_python method within the Field class
+    to_python_pattern = r'    def to_python\(self, value\):[\s\S]*?    return value(?=\n    [a-zA-Z_])'
+    to_python_match = re.search(to_python_pattern, field_class)
+    
+    if to_python_match:
+        # The correct implementation of to_python
+        new_to_python = '''    def to_python(self, value):
+        """"""
+        Convert the input value into the expected Python data type, raising
+        django.core.exceptions.ValidationError if the data can't be converted.
+        Return the converted value. Subclasses should override this.
+        """"""
+        # Handle enum values by extracting their value property
+        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):
+            return value.value
+        return value'''
+        
+        # Replace the old to_python method with the new one
+        new_field_class = re.sub(to_python_pattern, new_to_python, field_class)
+        
+        # Replace the old Field class with the new one in the content
+        new_content = content[:field_class_match.start()] + new_field_class + content[field_class_match.end():]
+        
+        # Write the file back with UTF-8 encoding
+        with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+            f.write(new_content)
+        
+        print(""Successfully updated to_python method"")
+    else:
+        print(""Could not find to_python method"")
+else:
+    print(""Could not find Field class"")
+EOL"
+59,60,1,1183875793934926,1183875996057818,0,0,python fix_field.py
+60,61,1,1183875996145246,1183876182741408,1,1,"grep -n ""def to_python"" django/db/models/fields/__init__.py"
+61,62,1,1183876182746838,1183876403685094,0,0,"find django/db/models/fields -type f -exec grep -l ""to_python"" {} \;"
+62,63,1,1183876403703047,1183876588536451,0,0,"grep -A 10 ""def to_python"" django/db/models/fields/__init__.py.bak"
+63,64,1,1183876588546851,1183876769215491,0,0,"cat > fix_field.py << 'EOL'
+import re
+
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# The original to_python method in the Field class
+original_to_python = '''    def to_python(self, value):
+        """"""
+        Convert the input value into the expected Python data type, raising
+        django.core.exceptions.ValidationError if the data can't be converted.
+        Return the converted value. Subclasses should override this.
+        """"""
+        return value'''
+
+# The fixed to_python method
+fixed_to_python = '''    def to_python(self, value):
+        """"""
+        Convert the input value into the expected Python data type, raising
+        django.core.exceptions.ValidationError if the data can't be converted.
+        Return the converted value. Subclasses should override this.
+        """"""
+        # Handle enum values by extracting their value property
+        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):
+            return value.value
+        return value'''
+
+# Replace the original method with the fixed one
+new_content = content.replace(original_to_python, fixed_to_python)
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.write(new_content)
+
+print(""Successfully updated to_python method"")
+EOL"
+64,65,1,1183876769227073,1183876974943294,0,0,python fix_field.py
+65,66,1,1183876974946670,1183877159376889,0,0,"grep -A 10 ""def to_python"" django/db/models/fields/__init__.py | head -15"
+66,67,1,1183877159380807,1183877344105847,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py.bak | head -20"
+67,68,1,1183877344108662,1183877600704629,1,1,python reproduce_issue.py
+68,69,1,1183877600825409,1183877782047375,0,0,"cat > fix_field.py << 'EOL'
+import re
+
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# The original to_python method in the Field class with proper indentation
+original_to_python = '''    def to_python(self, value):
+        """"""
+        Convert the input value into the expected Python data type, raising
+        django.core.exceptions.ValidationError if the data can't be converted.
+        Return the converted value. Subclasses should override this.
+        """"""
+        return value'''
+
+# The fixed to_python method with proper indentation
+fixed_to_python = '''    def to_python(self, value):
+        """"""
+        Convert the input value into the expected Python data type, raising
+        django.core.exceptions.ValidationError if the data can't be converted.
+        Return the converted value. Subclasses should override this.
+        """"""
+        # Handle enum values by extracting their value property
+        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):
+            return value.value
+        return value'''
+
+# Replace the original method with the fixed one
+new_content = content.replace(original_to_python, fixed_to_python)
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.write(new_content)
+
+print(""Successfully updated to_python method"")
+EOL"
+69,70,1,1183877782059908,1183877986404683,0,0,python fix_field.py
+70,71,1,1183877986413409,1183878168094764,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py.bak | head -20"
+71,72,1,1183878168098722,1183878428883571,1,1,python reproduce_issue.py
+72,73,1,1183878428889602,1183878610578462,0,0,"sed -i ""s/def to_python(self, value):\\n        \""\""\""\\n        Convert the input value into the expected Python data type, raising\\n        django.core.exceptions.ValidationError if the data can't be converted.\\n        Return the converted value. Subclasses should override this.\\n        \""\""\""\\n        return value/def to_python(self, value):\\n        \""\""\""\\n        Convert the input value into the expected Python data type, raising\\n        django.core.exceptions.ValidationError if the data can't be converted.\\n        Return the converted value. Subclasses should override this.\\n        \""\""\""\\n        # Handle enum values by extracting their value property\\n        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):\\n            return value.value\\n        return value/g"" django/db/models/fields/__init__.py"
+73,74,1,1183878610585415,1183878872717024,1,1,python reproduce_issue.py
+74,75,1,1183878872724788,1183879051042559,0,0,"cat > temp_fix.py << 'EOL'
+import re
+
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# Split the content into lines
+lines = content.split('\n')
+
+# Find the to_python method and replace it
+new_lines = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+    if 'def to_python(self, value):' in line and i + 6 < len(lines) and 'return value' in lines[i+6]:
+        # Found the to_python method - replace it with the fixed version
+        new_lines.append(line)
+        new_lines.append('        """"""')
+        new_lines.append('        Convert the input value into the expected Python data type, raising')
+        new_lines.append('        django.core.exceptions.ValidationError if the data can't be converted.')
+        new_lines.append('        Return the converted value. Subclasses should override this.')
+        new_lines.append('        """"""')
+        new_lines.append('        # Handle enum values by extracting their value property')
+        new_lines.append('        if hasattr(value, 'value') and not isinstance(value, (str, int, float, bool, type(None))):')
+        new_lines.append('            return value.value')
+        new_lines.append('        return value')
+        i += 7  # Skip the original method
+    else:
+        new_lines.append(line)
+        i += 1
+
+# Join the lines back together
+new_content = '\n'.join(new_lines)
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.write(new_content)
+
+print(""Successfully updated to_python method"")
+EOL"
+75,76,1,1183879051062857,1183879246702135,1,1,python temp_fix.py
+76,77,1,1183879246710360,1183879426423584,0,0,"cat > temp_fix.py << 'EOL'
+import re
+
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# Split the content into lines
+lines = content.split('\n')
+
+# Find the to_python method and replace it
+new_lines = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+    if 'def to_python(self, value):' in line and i + 6 < len(lines) and 'return value' in lines[i+6]:
+        # Found the to_python method - replace it with the fixed version
+        new_lines.append(line)
+        new_lines.append('        """"""')
+        new_lines.append('        Convert the input value into the expected Python data type, raising')
+        new_lines.append('        django.core.exceptions.ValidationError if the data can\'t be converted.')
+        new_lines.append('        Return the converted value. Subclasses should override this.')
+        new_lines.append('        """"""')
+        new_lines.append('        # Handle enum values by extracting their value property')
+        new_lines.append('        if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):')
+        new_lines.append('            return value.value')
+        new_lines.append('        return value')
+        i += 7  # Skip the original method
+    else:
+        new_lines.append(line)
+        i += 1
+
+# Join the lines back together
+new_content = '\n'.join(new_lines)
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.write(new_content)
+
+print(""Successfully updated to_python method"")
+EOL"
+77,78,1,1183879426433622,1183879626227605,0,0,python temp_fix.py
+78,79,1,1183879626262610,1183879882409199,1,1,python reproduce_issue.py
+79,80,1,1183879882418276,1183880063381939,0,0,"grep -A 20 ""class Field"" django/db/models/fields/__init__.py | head -30"
+80,81,1,1183880063398800,1183880247911205,0,0,"grep -n ""return value"" django/db/models/fields/__init__.py"
+81,82,1,1183880247915753,1183880435589514,0,0,cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py
+82,83,1,1183880435592379,1183880618719040,0,0,"cat > patch_field.py << 'EOL'
+# Read the file
+with open('django/db/models/fields/__init__.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the Field class and the to_python method
+in_field_class = False
+found_to_python = False
+
+for i, line in enumerate(lines):
+    if line.startswith('class Field'):
+        in_field_class = True
+    elif in_field_class and line.startswith('    def to_python'):
+        # Found the to_python method
+        start_line = i
+        # Find the end of the method (next method or end of class)
+        end_line = i + 1
+        while end_line < len(lines) and not (lines[end_line].startswith('    def ') and end_line > i+1):
+            end_line += 1
+        
+        # Replace the method
+        new_method = [
+            '    def to_python(self, value):\n',
+            '        """"""\n',
+            '        Convert the input value into the expected Python data type, raising\n',
+            '        django.core.exceptions.ValidationError if the data can\'t be converted.\n',
+            '        Return the converted value. Subclasses should override this.\n',
+            '        """"""\n',
+            '        # Handle enum values by extracting their value property\n',
+            '        if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):\n',
+            '            return value.value\n',
+            '        return value\n',
+            '\n'  # Empty line after the method
+        ]
+        
+        # Replace the lines
+        lines = lines[:start_line] + new_method + lines[end_line:]
+        found_to_python = True
+        break
+
+if found_to_python:
+    # Write the file back
+    with open('django/db/models/fields/__init__.py', 'w') as f:
+        f.writelines(lines)
+    print(""Successfully patched to_python method"")
+else:
+    print(""Could not find to_python method"")
+EOL"
+83,84,1,1183880618725852,1183880816484682,1,1,python patch_field.py
+84,85,1,1183880816589303,1183880996823511,0,0,"cat > patch_field.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the Field class and the to_python method
+in_field_class = False
+found_to_python = False
+
+for i, line in enumerate(lines):
+    if line.startswith('class Field'):
+        in_field_class = True
+    elif in_field_class and line.startswith('    def to_python'):
+        # Found the to_python method
+        start_line = i
+        # Find the end of the method (next method or end of class)
+        end_line = i + 1
+        while end_line < len(lines) and not (lines[end_line].startswith('    def ') and end_line > i+1):
+            end_line += 1
+        
+        # Replace the method
+        new_method = [
+            '    def to_python(self, value):\n',
+            '        """"""\n',
+            '        Convert the input value into the expected Python data type, raising\n',
+            '        django.core.exceptions.ValidationError if the data can\'t be converted.\n',
+            '        Return the converted value. Subclasses should override this.\n',
+            '        """"""\n',
+            '        # Handle enum values by extracting their value property\n',
+            '        if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):\n',
+            '            return value.value\n',
+            '        return value\n',
+            '\n'  # Empty line after the method
+        ]
+        
+        # Replace the lines
+        lines = lines[:start_line] + new_method + lines[end_line:]
+        found_to_python = True
+        break
+
+if found_to_python:
+    # Write the file back with UTF-8 encoding
+    with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+        f.writelines(lines)
+    print(""Successfully patched to_python method"")
+else:
+    print(""Could not find to_python method"")
+EOL"
+85,86,1,1183880996831325,1183881195805806,0,0,python patch_field.py
+86,87,1,1183881195809713,1183881647945233,1,1,python reproduce_issue.py
+87,88,1,1183881647949451,1183881827234387,0,0,"grep -A 10 ""class Field"" django/db/models/fields/__init__.py | head -20"
+88,89,1,1183881827334159,1183882009378118,0,0,"grep -A 10 ""@cached_property"" django/db/models/fields/__init__.py"
+89,90,1,1183882009395761,1183882194333111,0,0,"cat > patch_field.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# Split into lines
+lines = content.split('\n')
+
+# Find the to_python method
+found = False
+for i, line in enumerate(lines):
+    if 'def to_python(self, value):' in line:
+        # Found the method, now replace its body
+        # Find the next non-empty line after the docstring
+        j = i + 1
+        while j < len(lines) and ('""""""' not in lines[j] and 'return' not in lines[j]):
+            j += 1
+        # Find the return statement
+        while j < len(lines) and 'return' not in lines[j]:
+            j += 1
+        if j < len(lines):
+            # Replace the return line with our new implementation
+            indent = ' ' * (len(lines[j]) - len(lines[j].lstrip()))
+            lines[j] = indent + '# Handle enum values by extracting their value property'
+            lines.insert(j+1, indent + 'if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):')
+            lines.insert(j+2, indent + '    return value.value')
+            # Keep the original return value line
+            found = True
+            break
+
+if found:
+    # Join the lines back together
+    new_content = '\n'.join(lines)
+    # Write the file back with UTF-8 encoding
+    with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+        f.write(new_content)
+    print(""Successfully patched to_python method"")
+else:
+    print(""Could not find to_python method"")
+EOL"
+90,91,1,1183882194342428,1183882395459918,0,0,python patch_field.py
+91,92,1,1183882395466471,1183882848736063,1,1,python reproduce_issue.py
+92,93,1,1183882848741664,1183883034295777,0,0,"grep -A 20 ""def __init__"" django/db/models/fields/__init__.py | head -30"
+93,94,1,1183883034325663,1183883216230227,0,0,cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py
+94,95,1,1183883216257589,1183883396505973,1,1,"sed -i '/def to_python(self, value):/,/return value/ {\n    /def to_python(self, value):/! {\n        /return value/!d\n    }\n}' django/db/models/fields/__init__.py && sed -i '/def to_python(self, value):/a \
+        # Handle enum values by extracting their value property\\n        if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):\\n            return value.value' django/db/models/fields/__init__.py"
+95,96,1,1183883396593732,1183883586555625,0,0,"sed -i '/def to_python(self, value):/!b;n;:a;n;/return value/!ba;i\        # Handle enum values by extracting their value property\n        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n            return value.value' django/db/models/fields/__init__.py"
+96,97,1,1183883586566275,1183883848129539,1,1,python reproduce_issue.py
+97,98,1,1183883848133637,1183884031131387,0,0,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && sed -i '/def to_python(self, value):/!b;n;:a;n;/return value/!ba;i\        # Handle enum values by extracting their value property\n        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n            return value.value' django/db/models/fields/__init__.py"
+98,99,1,1183884031139472,1183884212645500,0,0,"grep -A 10 ""def to_python"" django/db/models/fields/__init__.py | head -15"
+99,100,1,1183884212654697,1183884469894650,1,1,python reproduce_issue.py
+100,101,1,1183884469909779,1183884650247931,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py | cat -A"
+101,102,1,1183884650257619,1183884836363987,0,0,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && sed -i '0,/^    def to_python(self, value):$/ { /^    def to_python(self, value):$/ { h; b; }; d; }; /^    def to_python(self, value):$/ { x; s/$/\n        # Handle enum values by extracting their value property\n        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n            return value.value/; x; }; P; D' django/db/models/fields/__init__.py"
+102,103,1,1183884836367072,1183885018083104,1,1,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && sed -i '0,/def to_python(self, value):/ {/def to_python(self, value):/a \\n        # Handle enum values by extracting their value property\\n        if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):\\n            return value.value\n    }' django/db/models/fields/__init__.py"
+103,104,1,1183885018099014,1183885199843488,0,0,"cat > fix_field.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the first occurrence of the to_python method in the Field class
+found = False
+new_lines = []
+
+for line in lines:
+    if not found and 'def to_python(self, value):' in line:
+        # Found the first occurrence
+        new_lines.append(line)
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n')
+        new_lines.append('            return value.value\n')
+        found = True
+    else:
+        new_lines.append(line)
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched to_python method"")
+EOL"
+104,105,1,1183885199855771,1183885395685009,0,0,python fix_field.py
+105,106,1,1183885395698024,1183885582604343,0,0,"grep -A 10 ""def to_python"" django/db/models/fields/__init__.py | head -15"
+106,107,1,1183885582675426,1183885768659234,0,0,"cat > fix_field.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the first occurrence of the to_python method in the Field class
+found = False
+new_lines = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    if not found and 'def to_python(self, value):' in line:
+        # Found the first occurrence
+        new_lines.append(line)  # def to_python(self, value):
+        new_lines.append(lines[i+1])  # first line of docstring
+        new_lines.append(lines[i+2])  # second line of docstring
+        new_lines.append(lines[i+3])  # third line of docstring
+        new_lines.append(lines[i+4])  # fourth line of docstring
+        new_lines.append(lines[i+5])  # fifth line of docstring
+        new_lines.append(lines[i+6])  # closing docstring
+        # Add our new code
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n')
+        new_lines.append('            return value.value\n')
+        # Skip to the return statement
+        i += 7
+        while i < len(lines) and 'return value' not in lines[i]:
+            i += 1
+        if i < len(lines):
+            new_lines.append(lines[i])  # return value
+        found = True
+    else:
+        new_lines.append(line)
+        i += 1
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched to_python method"")
+EOL"
+107,108,1,1183885768678941,1183885965468812,0,0,python fix_field.py
+108,109,1,1183885965471798,1183886153091788,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py | head -20"
+109,110,1,1183886153097298,1183886339811313,1,1,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && sed -i '/def to_python(self, value):/,/return value/ {\n    /def to_python(self, value):/b\n    /return value/b\n    d\n}; /def to_python(self, value):/a \\n        # Handle enum values by extracting their value property\\n        if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):\\n            return value.value' django/db/models/fields/__init__.py"
+110,111,1,1183886339817615,1183886519058720,1,1,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && sed -i '/def to_python(self, value):/ {n; s/.*//; n; s/.*//; n; s/.*//; n; s/.*//; n; s/.*//; n; s/.*//; i\        # Handle enum values by extracting their value property\n        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n            return value.value' django/db/models/fields/__init__.py"
+111,113,1,1183886519064741,1183886707183152,0,0,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && sed -i '/        """"""/a \
+        # Handle enum values by extracting their value property\n        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n            return value.value' django/db/models/fields/__init__.py"
+112,114,1,1183886707190836,1183886889036769,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py | head -20"
+113,115,1,1183886889043652,1183887075956396,1,1,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && sed -i '/def to_python(self, value):/,/return value/ {\n    /        """"""/,/        """"""/ b\n    /return value/ b\n    d\n}; /        """"""/ a \
+        # Handle enum values by extracting their value property\n        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n            return value.value' django/db/models/fields/__init__.py"
+114,116,1,1183887075977215,1183887262189118,0,0,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && awk '/def to_python\(self, value\):/,/return value/ { if (/        """"""/ && !done) { print; print ""        # Handle enum values by extracting their value property""; print ""        if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):""; print ""            return value.value""; done=1; next } } { print }' django/db/models/fields/__init__.py > temp && mv temp django/db/models/fields/__init__.py"
+115,117,1,1183887262191904,1183887446360122,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py | head -20"
+116,118,1,1183887446364280,1183887635949987,0,0,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && awk '/def to_python\(self, value\):/,/return value/ { if (/        """"""$/ && !done) { print; print ""        # Handle enum values by extracting their value property""; print ""        if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):""; print ""            return value.value""; done=1; next } } { print }' django/db/models/fields/__init__.py > temp && mv temp django/db/models/fields/__init__.py"
+117,119,1,1183887635952672,1183887819765355,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py | head -20"
+118,120,1,1183887819774963,1183888005680393,0,0,"cat > fix_field.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the first to_python method and insert after the docstring
+new_lines = []
+found = False
+
+for line in lines:
+    new_lines.append(line)
+    if not found and 'def to_python(self, value):' in line:
+        # Found the method, now look for the end of the docstring
+        found = True
+    elif found and line.strip() == '        """"""' and not hasattr(f, 'added'):
+        # Found the end of the docstring, add our code
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n')
+        new_lines.append('            return value.value\n')
+        # Mark as added
+        f.added = True
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched to_python method"")
+EOL"
+119,121,1,1183888005686865,1183888202712054,0,0,python fix_field.py
+120,122,1,1183888202715240,1183888383627074,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py | head -20"
+121,123,1,1183888383632694,1183888568210650,0,0,"cat > fix_field.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the first to_python method and insert after the docstring
+new_lines = []
+found_def = False
+found_end_of_docstring = False
+
+for line in lines:
+    new_lines.append(line)
+    
+    if not found_def and 'def to_python(self, value):' in line:
+        found_def = True
+    
+    if found_def and not found_end_of_docstring and '        """"""' in line:
+        # Found the end of the docstring, add our code
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n')
+        new_lines.append('            return value.value\n')
+        found_end_of_docstring = True
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched to_python method"")
+EOL"
+122,124,1,1183888568218335,1183888766842446,0,0,python fix_field.py
+123,125,1,1183888766845742,1183888951093960,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py | head -20"
+124,126,1,1183888951096485,1183889134653499,0,0,"cat > fix_field.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the first to_python method and insert after the docstring
+new_lines = []
+found_def = False
+found_end_of_docstring = False
+
+for line in lines:
+    new_lines.append(line)
+    
+    if not found_def and 'def to_python(self, value):' in line:
+        found_def = True
+    
+    if found_def and not found_end_of_docstring and line.strip() == '        """"""':
+        # Found the end of the docstring, add our code
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n')
+        new_lines.append('            return value.value\n')
+        found_end_of_docstring = True
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched to_python method"")
+EOL"
+125,127,1,1183889134656315,1183889329606340,0,0,python fix_field.py
+126,128,1,1183889329609716,1183889511878220,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py | head -20"
+127,129,1,1183889511881506,1183889694072585,0,0,"cat > temp_fix.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# Split into lines
+lines = content.split('\n')
+
+# Find the first to_python method
+new_lines = []
+i = 0
+found = False
+
+while i < len(lines):
+    line = lines[i]
+    new_lines.append(line)
+    
+    if not found and 'def to_python(self, value):' in line:
+        # Found the method
+        found = True
+        
+        # Skip to the end of the docstring
+        i += 1
+        while i < len(lines) and '        """"""' not in lines[i]:
+            new_lines.append(lines[i])
+            i += 1
+        
+        # Add the end of docstring line
+        if i < len(lines):
+            new_lines.append(lines[i])
+            i += 1
+        
+        # Add our new code
+        new_lines.append('        # Handle enum values by extracting their value property')
+        new_lines.append('        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):')
+        new_lines.append('            return value.value')
+        
+        # Continue with the rest of the file
+        continue
+    
+    i += 1
+
+# Join the lines back together
+new_content = '\n'.join(new_lines)
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.write(new_content)
+
+print(""Successfully patched to_python method"")
+EOL"
+128,130,1,1183889694075971,1183889888815779,0,0,python temp_fix.py
+129,131,1,1183889888820858,1183890067780760,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py | head -20"
+130,132,1,1183890067784898,1183890251054434,2,2,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && sed -i '/def to_python(self, value):/,/return value/ {H; /return value/ { x; s/.*def to_python(self, value):.*return value/    def to_python(self, value):\n        """"""\n        Convert the input value into the expected Python data type, raising\n        django.core.exceptions.ValidationError if the data can\'t be converted.\n        Return the converted value. Subclasses should override this.\n        """"""\n        # Handle enum values by extracting their value property\n        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n            return value.value\n        return value/; p; d }; x; d }' django/db/models/fields/__init__.py"
+131,133,1,1183890251060626,1183890435507496,0,0,"cat > fixed_to_python.py << 'EOL'
+def to_python(self, value):
+    """"""
+    Convert the input value into the expected Python data type, raising
+    django.core.exceptions.ValidationError if the data can't be converted.
+    Return the converted value. Subclasses should override this.
+    """"""
+    # Handle enum values by extracting their value property
+    if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):
+        return value.value
+    return value
+EOL"
+132,134,1,1183890435514750,1183890617920750,2,2,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && sed -i '/def to_python(self, value):/,/return value/c\
+    def to_python(self, value):\
+        """"""\
+        Convert the input value into the expected Python data type, raising\
+        django.core.exceptions.ValidationError if the data can\'t be converted.\
+        Return the converted value. Subclasses should override this.\
+        """"""\
+        # Handle enum values by extracting their value property\
+        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\
+            return value.value\
+        return value' django/db/models/fields/__init__.py"
+133,135,1,1183890617941569,1183890800891367,2,2,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && sed -i '/def to_python(self, value):/,/return value/ {\n    /def to_python(self, value):/c\
+    def to_python(self, value):\
+        """"""\
+        Convert the input value into the expected Python data type, raising\
+        django.core.exceptions.ValidationError if the data can\'t be converted.\
+        Return the converted value. Subclasses should override this.\
+        """"""\
+        # Handle enum values by extracting their value property\
+        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\
+            return value.value\
+        return value\n}' django/db/models/fields/__init__.py"
+134,136,1,1183890800897028,1183890987293898,255,255,"cp django/db/models/fields/__init__.py.bak django/db/models/fields/__init__.py && perl -i -pe 'if(/def to_python\(self, value\):/ .. /return value/) { $_ = ""    def to_python(self, value):\n        \""\""\""\n        Convert the input value into the expected Python data type, raising\n        django.core.exceptions.ValidationError if the data can\'t be converted.\n        Return the converted value. Subclasses should override this.\n        \""\""\""\n        # Handle enum values by extracting their value property\n        if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):\n            return value.value\n        return value\n"" if /def to_python\(self, value\):/; s/.*/# skipped/ if !/def to_python\(self, value\):/ && !/return value/ }' django/db/models/fields/__init__.py"
+135,137,1,1183890987299418,1183891171731400,0,0,"cat > replace_method.py << 'EOL'
+import re
+
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    content = f.read()
+
+# The new to_python method
+new_method = '''    def to_python(self, value):
+        """"""
+        Convert the input value into the expected Python data type, raising
+        django.core.exceptions.ValidationError if the data can\'t be converted.
+        Return the converted value. Subclasses should override this.
+        """"""
+        # Handle enum values by extracting their value property
+        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):
+            return value.value
+        return value'''
+
+# Use regex to replace the first occurrence of the to_python method
+# Find the method from 'def to_python' to the next 'return value' that's at the same indentation
+pattern = r'    def to_python\(self, value\):[\s\S]*?    return value'
+new_content = re.sub(pattern, new_method, content, count=1)
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.write(new_content)
+
+print(""Successfully replaced to_python method"")
+EOL"
+136,138,1,1183891171748782,1183891374248476,0,0,python replace_method.py
+137,139,1,1183891374255960,1183891558386459,0,0,"grep -A 15 ""def to_python"" django/db/models/fields/__init__.py | head -20"
+138,140,1,1183891558389334,1183892035232318,0,0,python reproduce_issue.py
+139,141,1,1183892035236335,1183892216239010,0,0,"cat > reproduce_issue.py << 'EOL'
+import django
+from django.conf import settings
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+# Configure settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            '__main__',
+        ],
+        USE_TZ=True,
+    )
+    django.setup()
+
+class MyChoice(models.TextChoices):
+    FIRST_CHOICE = ""first"", _(""The first choice, it is"")
+    SECOND_CHOICE = ""second"", _(""The second choice, it is"")
+
+class MyObject(models.Model):
+    my_str_value = models.CharField(max_length=10, choices=MyChoice.choices)
+    
+    class Meta:
+        app_label = '__main__'
+
+    def __str__(self):
+        return f""MyObject(my_str_value='{self.my_str_value}')""
+
+# Create an instance (not saved yet)
+obj = MyObject(my_str_value=MyChoice.FIRST_CHOICE)
+print(f""New object value type: {type(obj.my_str_value)}"")
+print(f""New object value str(): {str(obj.my_str_value)}"")
+print(f""New object value: {obj.my_str_value}"")
+
+# Save the instance
+obj.save()
+print(f""Saved object value type: {type(obj.my_str_value)}"")
+print(f""Saved object value str(): {str(obj.my_str_value)}"")
+print(f""Saved object value: {obj.my_str_value}"")
+
+# Retrieve the object from database
+retrieved_obj = MyObject.objects.get(pk=obj.pk)
+print(f""Retrieved object value type: {type(retrieved_obj.my_str_value)}"")
+print(f""Retrieved object value str(): {str(retrieved_obj.my_str_value)}"")
+print(f""Retrieved object value: {retrieved_obj.my_str_value}"")
+EOL"
+140,142,1,1183892216242045,1183892685049367,1,1,python reproduce_issue.py
+141,143,1,1183892685062341,1183892864405510,0,0,"cat > reproduce_issue.py << 'EOL'
+import django
+from django.conf import settings
+from django.db import models
+from django.db import connection
+from django.core.management import call_command
+from django.utils.translation import gettext_lazy as _
+
+# Configure settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            '__main__',
+        ],
+        USE_TZ=True,
+    )
+    django.setup()
+
+class MyChoice(models.TextChoices):
+    FIRST_CHOICE = ""first"", _(""The first choice, it is"")
+    SECOND_CHOICE = ""second"", _(""The second choice, it is"")
+
+class MyObject(models.Model):
+    my_str_value = models.CharField(max_length=10, choices=MyChoice.choices)
+    
+    class Meta:
+        app_label = '__main__'
+
+    def __str__(self):
+        return f""MyObject(my_str_value='{self.my_str_value}')""
+
+# Create tables
+with connection.schema_editor() as schema_editor:
+    schema_editor.create_model(MyObject)
+
+# Create an instance (not saved yet)
+obj = MyObject(my_str_value=MyChoice.FIRST_CHOICE)
+print(f""New object value type: {type(obj.my_str_value)}"")
+print(f""New object value str(): {str(obj.my_str_value)}"")
+print(f""New object value: {obj.my_str_value}"")
+
+# Save the instance
+obj.save()
+print(f""Saved object value type: {type(obj.my_str_value)}"")
+print(f""Saved object value str(): {str(obj.my_str_value)}"")
+print(f""Saved object value: {obj.my_str_value}"")
+
+# Retrieve the object from database
+retrieved_obj = MyObject.objects.get(pk=obj.pk)
+print(f""Retrieved object value type: {type(retrieved_obj.my_str_value)}"")
+print(f""Retrieved object value str(): {str(retrieved_obj.my_str_value)}"")
+print(f""Retrieved object value: {retrieved_obj.my_str_value}"")
+EOL"
+142,144,1,1183892864410729,1183893329874760,0,0,python reproduce_issue.py
+143,145,1,1183893329883396,1183893511661171,1,1,"grep -A 10 ""def __set__"" django/db/models/fields/__init__.py"
+144,146,1,1183893511667372,1183893842579875,0,0,"find django/db/models -type f -exec grep -l ""class DeferredAttribute"" {} \;"
+145,147,1,1183893842582961,1183894022917505,0,0,"grep -A 30 ""class DeferredAttribute"" django/db/models/query_utils.py"
+146,148,1,1183894022924418,1183894348946329,0,0,"find django/db/models -type f -exec grep -l ""DeferredAttribute"" {} \;"
+147,149,1,1183894348949585,1183894533546484,1,1,"grep -A 30 ""class DeferredAttribute"" django/db/models/fields/related_descriptors.py"
+148,150,1,1183894533549049,1183894716405240,0,0,"grep -n ""DeferredAttribute"" django/db/models/fields/related_descriptors.py"
+149,151,1,1183894716423805,1183894897849571,0,0,"grep -A 50 ""class ForeignKeyDeferredAttribute"" django/db/models/fields/related_descriptors.py"
+150,152,1,1183894897855402,1183895082650048,1,1,"grep -A 10 ""def __set__"" django/db/models/fields/__init__.py"
+151,153,1,1183895082655168,1183895267349867,0,0,"grep ""descriptor_class"" django/db/models/fields/__init__.py"
+152,154,1,1183895267353804,1183895450462322,0,0,"grep -A 20 ""def __init__"" django/db/models/base.py | head -30"
+153,155,1,1183895450481157,1183895635784667,0,0,"grep -A 100 ""def __init__"" django/db/models/base.py | head -50"
+154,156,1,1183895635791580,1183895820079326,0,0,"cat > reproduce_issue.py << 'EOL'
+import django
+from django.conf import settings
+from django.db import models
+from django.db import connection
+from django.core.management import call_command
+from django.utils.translation import gettext_lazy as _
+
+# Configure settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            '__main__',
+        ],
+        USE_TZ=True,
+    )
+    django.setup()
+
+class MyChoice(models.TextChoices):
+    FIRST_CHOICE = ""first"", _(""The first choice, it is"")
+    SECOND_CHOICE = ""second"", _(""The second choice, it is"")
+
+class MyObject(models.Model):
+    my_str_value = models.CharField(max_length=10, choices=MyChoice.choices)
+    
+    class Meta:
+        app_label = '__main__'
+
+    def __str__(self):
+        return f""MyObject(my_str_value='{self.my_str_value}')""
+
+# Create tables
+with connection.schema_editor() as schema_editor:
+    schema_editor.create_model(MyObject)
+
+# Create an instance with enum value
+obj = MyObject(my_str_value=MyChoice.FIRST_CHOICE)
+print(f""Before save - value type: {type(obj.my_str_value)}"")
+print(f""Before save - str(): {str(obj.my_str_value)}"")
+print(f""Before save - value: {obj.my_str_value}"")
+
+# Save the instance
+obj.save()
+print(f""After save - value type: {type(obj.my_str_value)}"")
+print(f""After save - str(): {str(obj.my_str_value)}"")
+print(f""After save - value: {obj.my_str_value}"")
+
+# Retrieve the object from database
+retrieved_obj = MyObject.objects.get(pk=obj.pk)
+print(f""Retrieved - value type: {type(retrieved_obj.my_str_value)}"")
+print(f""Retrieved - str(): {str(retrieved_obj.my_str_value)}"")
+print(f""Retrieved - value: {retrieved_obj.my_str_value}"")
+EOL"
+155,157,1,1183895820085408,1183896288616084,0,0,python reproduce_issue.py
+156,158,1,1183896288624269,1183896470619547,0,0,"grep -A 10 ""def get_db_prep_save"" django/db/models/fields/__init__.py"
+157,159,1,1183896470627522,1183896656762599,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.before_debug && sed -i 's/    def to_python(self, value):/    def to_python(self, value):\n        # Debug print\n        import sys\n        print(f""to_python called with {value} of type {type(value)}"", file=sys.stderr)/' django/db/models/fields/__init__.py"
+158,160,1,1183896656765995,1183897134112763,0,0,python reproduce_issue.py
+159,161,1,1183897134137499,1183897319471035,0,0,"grep -A 15 ""def get_db_prep_value"" django/db/models/fields/__init__.py"
+160,162,1,1183897319479972,1183897499895706,0,0,"grep -A 20 ""def save"" django/db/models/base.py | head -30"
+161,163,1,1183897499927966,1183897681804778,0,0,"grep -A 100 ""def save"" django/db/models/base.py | grep -A 50 ""save_base"""
+162,164,1,1183897681816420,1183897866399119,0,0,"grep -A 200 ""def _save_table"" django/db/models/base.py | grep -A 100 ""if pk_set and not force_insert"""
+163,165,1,1183897866406783,1183898050113091,0,0,"grep -A 20 ""def _do_insert"" django/db/models/base.py"
+164,166,1,1183898050121958,1183898229485893,0,0,"grep -A 20 ""def _insert"" django/db/models/query.py"
+165,167,1,1183898229489219,1183898414247352,0,0,"grep -A 20 ""def insert_values"" django/db/models/sql/subqueries.py"
+166,168,1,1183898414250538,1183898626470803,0,0,"find django/db/models/sql -type f -exec grep -l ""def insert_values"" {} \;"
+167,169,1,1183898626500489,1183898814340829,0,0,cat django/db/models/sql/subqueries.py
+168,170,1,1183898814346870,1183898999186962,0,0,"grep -A 20 ""class SQLInsertCompiler"" django/db/models/sql/compiler.py"
+169,171,1,1183898999195117,1183899184677161,1,1,"grep -A 50 ""def execute_sql"" django/db/models/sql/compiler.py | grep -A 30 ""class SQLInsertCompiler"""
+170,172,1,1183899184690135,1183899367106101,0,0,"grep -n ""def execute_sql"" django/db/models/sql/compiler.py"
+171,173,1,1183899367115148,1183899548100572,1,1,"grep -A 50 ""def execute_sql"" django/db/models/sql/compiler.py | grep -B 5 -A 50 ""def execute_sql"" | grep -A 50 ""class SQLInsertCompiler"""
+172,174,1,1183899548130949,1183899727801027,0,0,"grep -A 100 ""class SQLInsertCompiler"" django/db/models/sql/compiler.py"
+173,175,1,1183899727811166,1183899906614983,0,0,"grep -A 200 ""class SQLInsertCompiler"" django/db/models/sql/compiler.py | grep -A 100 ""def execute_sql"""
+174,176,1,1183899906618810,1183900084825639,1,1,"grep -A 20 ""def as_sql"" django/db/models/sql/compiler.py | grep -B 5 -A 20 ""def as_sql"" | grep -A 20 ""class SQLInsertCompiler"""
+175,177,1,1183900084828174,1183900270656947,0,0,"grep -n ""def as_sql"" django/db/models/sql/compiler.py"
+176,178,1,1183900270659952,1183900453762553,1,1,"grep -A 50 ""def as_sql"" django/db/models/sql/compiler.py | grep -B 10 -A 50 ""def as_sql"" | grep -A 50 ""class SQLInsertCompiler"""
+177,179,1,1183900453766380,1183900638347038,1,1,"grep -A 100 ""class SQLInsertCompiler"" django/db/models/sql/compiler.py | grep -A 50 ""def as_sql"""
+178,180,1,1183900638350164,1183900824892001,0,0,"grep -A 150 ""class SQLInsertCompiler"" django/db/models/sql/compiler.py | grep -A 10 ""def as_sql"""
+179,181,1,1183900824894947,1183901006709958,1,1,"grep -A 50 ""def as_sql"" django/db/models/sql/compiler.py | grep -B 20 -A 50 ""def as_sql"" | grep -A 50 ""class SQLInsertCompiler"""
+180,182,1,1183901006712613,1183901186453278,1,1,"grep -A 50 ""def as_sql"" django/db/models/sql/compiler.py | grep -B 100 ""class SQLInsertCompiler"" | grep -A 50 ""def as_sql"""
+181,183,1,1183901186456504,1183901365471366,0,0,"grep -A 50 ""def as_sql"" django/db/models/sql/compiler.py"
+182,184,1,1183901365480423,1183901551179964,0,0,"grep -A 10 ""def pre_save"" django/db/models/fields/__init__.py"
+183,185,1,1183901551187137,1183901735872771,1,1,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.before_pre_save && sed -i '/def pre_save(self, model_instance, add):/,/return getattr/model_instance, self.attname)/ {\/def pre_save(self, model_instance, add):/! {\/return getattr/model_instance, self.attname)/!d\n    }\n}; /def pre_save(self, model_instance, add):/a \\n        value = getattr(model_instance, self.attname)\\n        # Handle enum values by extracting their value property\\n        if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):\\n            value = value.value\\n            setattr(model_instance, self.attname, value)\\n        return value' django/db/models/fields/__init__.py"
+184,186,1,1183901735879734,1183901924503287,1,1,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.before_pre_save && sed -i '/def pre_save(self, model_instance, add):/a \\
+        value = getattr(model_instance, self.attname)\\n        # Handle enum values by extracting their value property\\n        if hasattr(value, \""value\"") and not isinstance(value, (str, int, float, bool, type(None))):\\n            value = value.value\\n            setattr(model_instance, self.attname, value)\\n        return value\n\n    def get_prep_value' django/db/models/fields/__init__.py"
+185,187,1,1183901924506393,1183902104509002,0,0,"cat > fix_pre_save.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the Field class and the pre_save method
+new_lines = []
+found = False
+
+for line in lines:
+    new_lines.append(line)
+    
+    if not found and 'def pre_save(self, model_instance, add):' in line:
+        # Found the method, add our implementation
+        new_lines.append('        value = getattr(model_instance, self.attname)\n')
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n')
+        new_lines.append('            value = value.value\n')
+        new_lines.append('            setattr(model_instance, self.attname, value)\n')
+        new_lines.append('        return value\n')
+        found = True
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched pre_save method"")
+EOL"
+186,188,1,1183902104514753,1183902304321644,0,0,python fix_pre_save.py
+187,189,1,1183902304330030,1183902487931535,0,0,"grep -A 15 ""def pre_save"" django/db/models/fields/__init__.py"
+188,190,1,1183902487937967,1183902670863993,0,0,"cat > fix_pre_save.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the Field class and the pre_save method
+new_lines = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    new_lines.append(line)
+    
+    if 'def pre_save(self, model_instance, add):' in line:
+        # Found the method, skip the original implementation
+        i += 1
+        while i < len(lines) and '    def ' not in lines[i] and not lines[i].strip() == '':
+            i += 1
+        # Add our implementation
+        new_lines.append('        value = getattr(model_instance, self.attname)\n')
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):\n')
+        new_lines.append('            value = value.value\n')
+        new_lines.append('            setattr(model_instance, self.attname, value)\n')
+        new_lines.append('        return value\n')
+        new_lines.append('\n')
+        continue
+    
+    i += 1
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched pre_save method"")
+EOL"
+189,191,1,1183902670869503,1183902872492498,0,0,python fix_pre_save.py
+190,192,1,1183902872501956,1183903058501223,0,0,"grep -A 15 ""def pre_save"" django/db/models/fields/__init__.py"
+191,193,1,1183903058510421,1183903540309085,0,0,python reproduce_issue.py
+192,194,1,1183903540350873,1183903727037548,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.before_debug && sed -i 's/    def pre_save(self, model_instance, add):/    def pre_save(self, model_instance, add):\n        import sys\n        print(f""pre_save called with {getattr(model_instance, self.attname)} of type {type(getattr(model_instance, self.attname))}"", file=sys.stderr)/' django/db/models/fields/__init__.py"
+193,195,1,1183903727041455,1183904209003355,0,0,python reproduce_issue.py
+194,196,1,1183904209020627,1183904405435072,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.before_debug2 && sed -i 's/        value = getattr(model_instance, self.attname)/        value = getattr(model_instance, self.attname)\n        import sys\n        print(f""Before conversion: {value} of type {type(value)}"", file=sys.stderr)/' django/db/models/fields/__init__.py && sed -i 's/            value = value.value/            value = value.value\n            print(f""After conversion: {value} of type {type(value)}"", file=sys.stderr)/' django/db/models/fields/__init__.py && sed -i 's/            setattr(model_instance, self.attname, value)/            setattr(model_instance, self.attname, value)\n            print(f""After setattr: {getattr(model_instance, self.attname)} of type {type(getattr(model_instance, self.attname))}"", file=sys.stderr)/' django/db/models/fields/__init__.py"
+195,197,1,1183904405437767,1183904882051260,0,0,python reproduce_issue.py
+196,198,1,1183904882057642,1183905066231623,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.before_debug3 && sed -i 's/        if hasattr(value, ""value"") and not isinstance(value, (str, int, float, bool, type(None))):/        has_value = hasattr(value, ""value"")\n        is_primitive = isinstance(value, (str, int, float, bool, type(None)))\n        import sys\n        print(f""has_value: {has_value}, is_primitive: {is_primitive}, type: {type(value)}"", file=sys.stderr)\n        if has_value and not is_primitive:/' django/db/models/fields/__init__.py"
+197,199,1,1183905066234348,1183905544893926,0,0,python reproduce_issue.py
+198,200,1,1183905544906009,1183905731074653,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.before_fix && sed -i 's/        has_value = hasattr(value, ""value"")\n        is_primitive = isinstance(value, (str, int, float, bool, type(None)))\n        import sys\n        print(f""has_value: {has_value}, is_primitive: {is_primitive}, type: {type(value)}"", file=sys.stderr)\n        if has_value and not is_primitive:/        # Handle enum values by extracting their value property\n        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":/' django/db/models/fields/__init__.py"
+199,201,1,1183905731080604,1183906192933973,0,0,python reproduce_issue.py
+200,202,1,1183906192945654,1183906373568829,0,0,"grep -A 10 ""def pre_save"" django/db/models/fields/__init__.py"
+201,203,1,1183906373573978,1183906559007417,0,0,"cat > fix_pre_save.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the Field class and the pre_save method
+new_lines = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    new_lines.append(line)
+    
+    if 'def pre_save(self, model_instance, add):' in line:
+        # Found the method, skip the original implementation
+        i += 1
+        while i < len(lines) and '    def ' not in lines[i] and not lines[i].strip() == '':
+            i += 1
+        # Add our implementation
+        new_lines.append('        value = getattr(model_instance, self.attname)\n')
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":\n')
+        new_lines.append('            value = value.value\n')
+        new_lines.append('            setattr(model_instance, self.attname, value)\n')
+        new_lines.append('        return value\n')
+        new_lines.append('\n')
+        continue
+    
+    i += 1
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched pre_save method"")
+EOL"
+202,204,1,1183906559013779,1183906759429373,0,0,python fix_pre_save.py
+203,205,1,1183906759436196,1183906942114528,0,0,"grep -A 10 ""def pre_save"" django/db/models/fields/__init__.py"
+204,206,1,1183906942117804,1183907419934704,0,0,python reproduce_issue.py
+205,207,1,1183907419938071,1183907602926312,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.before_debug && sed -i 's/    def pre_save(self, model_instance, add):/    def pre_save(self, model_instance, add):\n        import sys\n        print(f""pre_save called with {getattr(model_instance, self.attname)} of type {type(getattr(model_instance, self.attname))}"", file=sys.stderr)/' django/db/models/fields/__init__.py"
+206,208,1,1183907602929328,1183908077063760,0,0,python reproduce_issue.py
+207,209,1,1183908077078227,1183908261970723,0,0,"cat > reproduce_issue.py << 'EOL'
+import django
+from django.conf import settings
+from django.db import models
+from django.db import connection
+from django.core.management import call_command
+from django.utils.translation import gettext_lazy as _
+
+# Configure settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            '__main__',
+        ],
+        USE_TZ=True,
+    )
+    django.setup()
+
+class MyChoice(models.TextChoices):
+    FIRST_CHOICE = ""first"", _(""The first choice, it is"")
+    SECOND_CHOICE = ""second"", _(""The second choice, it is"")
+
+class MyObject(models.Model):
+    my_str_value = models.CharField(max_length=10, choices=MyChoice.choices)
+    
+    class Meta:
+        app_label = '__main__'
+
+    def __str__(self):
+        return f""MyObject(my_str_value='{self.my_str_value}')""
+
+# Create tables
+with connection.schema_editor() as schema_editor:
+    schema_editor.create_model(MyObject)
+
+# Create an instance with enum value
+obj = MyObject(my_str_value=MyChoice.FIRST_CHOICE)
+print(f""Before save - value type: {type(obj.my_str_value)}"")
+print(f""Before save - str(): {str(obj.my_str_value)}"")
+print(f""Before save - value: {obj.my_str_value}"")
+
+print(""Calling save..."")
+obj.save()
+print(""Save completed"")
+
+print(f""After save - value type: {type(obj.my_str_value)}"")
+print(f""After save - str(): {str(obj.my_str_value)}"")
+print(f""After save - value: {obj.my_str_value}"")
+
+# Retrieve the object from database
+retrieved_obj = MyObject.objects.get(pk=obj.pk)
+print(f""Retrieved - value type: {type(retrieved_obj.my_str_value)}"")
+print(f""Retrieved - str(): {str(retrieved_obj.my_str_value)}"")
+print(f""Retrieved - value: {retrieved_obj.my_str_value}"")
+EOL"
+208,210,1,1183908261990080,1183908732590161,0,0,python reproduce_issue.py
+209,211,1,1183908732675185,1183908917948253,0,0,"cat > reproduce_issue.py << 'EOL'
+import django
+from django.conf import settings
+from django.db import models
+from django.db import connection
+from django.core.management import call_command
+from django.utils.translation import gettext_lazy as _
+import sys
+
+# Configure settings
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            '__main__',
+        ],
+        USE_TZ=True,
+    )
+    django.setup()
+
+class MyChoice(models.TextChoices):
+    FIRST_CHOICE = ""first"", _(""The first choice, it is"")
+    SECOND_CHOICE = ""second"", _(""The second choice, it is"")
+
+class MyObject(models.Model):
+    my_str_value = models.CharField(max_length=10, choices=MyChoice.choices)
+    
+    class Meta:
+        app_label = '__main__'
+
+    def __str__(self):
+        return f""MyObject(my_str_value='{self.my_str_value}')""
+
+# Create tables
+with connection.schema_editor() as schema_editor:
+    schema_editor.create_model(MyObject)
+
+# Create an instance with enum value
+obj = MyObject(my_str_value=MyChoice.FIRST_CHOICE)
+print(f""Before save - value type: {type(obj.my_str_value)}"", flush=True)
+print(f""Before save - str(): {str(obj.my_str_value)}"", flush=True)
+print(f""Before save - value: {obj.my_str_value}"", flush=True)
+
+print(""Calling save..."", flush=True)
+obj.save()
+print(""Save completed"", flush=True)
+
+print(f""After save - value type: {type(obj.my_str_value)}"", flush=True)
+print(f""After save - str(): {str(obj.my_str_value)}"", flush=True)
+print(f""After save - value: {obj.my_str_value}"", flush=True)
+
+# Retrieve the object from database
+retrieved_obj = MyObject.objects.get(pk=obj.pk)
+print(f""Retrieved - value type: {type(retrieved_obj.my_str_value)}"", flush=True)
+print(f""Retrieved - str(): {str(retrieved_obj.my_str_value)}"", flush=True)
+print(f""Retrieved - value: {retrieved_obj.my_str_value}"", flush=True)
+EOL"
+210,212,1,1183908917957891,1183909387273954,0,0,python reproduce_issue.py
+211,213,1,1183909387372744,1183909579982146,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.before_fix && sed -i 's/        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":/        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":\n            print(f""Converting enum {value} to {value.value}"", file=sys.stderr)/' django/db/models/fields/__init__.py && sed -i 's/            setattr(model_instance, self.attname, value)/            print(f""Setting {self.attname} to {value}"", file=sys.stderr)\n            setattr(model_instance, self.attname, value)/' django/db/models/fields/__init__.py"
+212,214,1,1183909579986644,1183910056036933,0,0,python reproduce_issue.py
+213,215,1,1183910056120104,1183910240971783,0,0,"cat > fix_pre_save.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the Field class and the pre_save method
+new_lines = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    new_lines.append(line)
+    
+    if 'def pre_save(self, model_instance, add):' in line:
+        # Found the method, skip the original implementation
+        i += 1
+        while i < len(lines) and '    def ' not in lines[i] and not lines[i].strip() == '':
+            i += 1
+        # Add our implementation
+        new_lines.append('        value = getattr(model_instance, self.attname)\n')
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":\n')
+        new_lines.append('            print(f""Converting enum {value} to {value.value}"", file=sys.stderr)\n')
+        new_lines.append('            print(f""Setting {self.attname} to {value.value}"", file=sys.stderr)\n')
+        new_lines.append('            setattr(model_instance, self.attname, value.value)\n')
+        new_lines.append('        return getattr(model_instance, self.attname)\n')
+        new_lines.append('\n')
+        continue
+    
+    i += 1
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched pre_save method"")
+EOL"
+214,216,1,1183910240975671,1183910442160450,0,0,python fix_pre_save.py
+215,217,1,1183910442176370,1183910922572717,0,0,python reproduce_issue.py
+216,218,1,1183910922643580,1183911104152641,0,0,"grep -A 10 ""def pre_save"" django/db/models/fields/__init__.py"
+217,219,1,1183911104165174,1183911572855076,0,0,python reproduce_issue.py
+218,220,1,1183911572869943,1183912044919221,0,0,python reproduce_issue.py 2>&1
+219,221,1,1183912045010998,1183912232895806,0,0,"cat > fix_pre_save.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the Field class and the pre_save method
+new_lines = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    new_lines.append(line)
+    
+    if 'def pre_save(self, model_instance, add):' in line:
+        # Found the method, skip the original implementation
+        i += 1
+        while i < len(lines) and '    def ' not in lines[i] and not lines[i].strip() == '':
+            i += 1
+        # Add our implementation
+        new_lines.append('        value = getattr(model_instance, self.attname)\n')
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":\n')
+        new_lines.append('            with open(\""/tmp/debug.txt\"", \""a\"") as f:\n')
+        new_lines.append('                f.write(f""Converting enum {value} to {value.value}\\n"")\n')
+        new_lines.append('                f.write(f""Setting {self.attname} to {value.value}\\n"")\n')
+        new_lines.append('            setattr(model_instance, self.attname, value.value)\n')
+        new_lines.append('        return getattr(model_instance, self.attname)\n')
+        new_lines.append('\n')
+        continue
+    
+    i += 1
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched pre_save method"")
+EOL"
+220,222,1,1183912232906496,1183912427939721,0,0,python fix_pre_save.py
+221,223,1,1183912427949991,1183912907581273,0,0,python reproduce_issue.py
+222,224,1,1183912907667820,1183913088528993,1,1,cat /tmp/debug.txt
+223,225,1,1183913088597080,1183913272131922,0,0,"grep -r ""def pre_save"" django/db/models/"
+224,226,1,1183913272143925,1183913455145579,0,0,"grep -A 10 ""def pre_save_val"" django/db/models/sql/compiler.py"
+225,227,1,1183913455153013,1183913641724994,0,0,"cp django/db/models/sql/compiler.py django/db/models/sql/compiler.py.before_debug && sed -i 's/        return field.pre_save(obj, add=True)/        print(f""Calling pre_save on {field} with {obj}"", file=sys.stderr)\n        return field.pre_save(obj, add=True)/' django/db/models/sql/compiler.py"
+226,228,1,1183913641733330,1183914116777292,1,1,python reproduce_issue.py
+227,229,1,1183914116876748,1183914307153422,0,0,"cp django/db/models/sql/compiler.py django/db/models/sql/compiler.py.before_debug && sed -i 's/    def pre_save_val(self, field, obj):/    def pre_save_val(self, field, obj):\n        import sys/' django/db/models/sql/compiler.py && sed -i 's/        return field.pre_save(obj, add=True)/        print(f""Calling pre_save on {field} with {obj}"", file=sys.stderr)\n        return field.pre_save(obj, add=True)/' django/db/models/sql/compiler.py"
+228,230,1,1183914307159193,1183914786116499,0,0,python reproduce_issue.py
+229,231,1,1183914786121859,1183914974628811,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.before_debug && sed -i 's/        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":/        import sys\n        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":/' django/db/models/fields/__init__.py"
+230,232,1,1183914974631446,1183915448597497,0,0,python reproduce_issue.py
+231,233,1,1183915448689033,1183915634828264,1,1,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.before_debug && sed -i 's/        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":/        try:\n            with open(\""/tmp/pre_save_debug.txt\"", \""a\"") as f:\n                f.write(f\\""pre_save called with {value} of type {type(value)}\\n\\"")\n        except:\n            pass\n        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":/' django/db/models/fields/__init__.py"
+232,234,1,1183915634903344,1183915816523278,0,0,"cat > fix_pre_save.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the Field class and the pre_save method
+new_lines = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    new_lines.append(line)
+    
+    if 'def pre_save(self, model_instance, add):' in line:
+        # Found the method, skip the original implementation
+        i += 1
+        while i < len(lines) and '    def ' not in lines[i] and not lines[i].strip() == '':
+            i += 1
+        # Add our implementation
+        new_lines.append('        try:\n')
+        new_lines.append('            with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                f.write(f""pre_save called with {getattr(model_instance, self.attname)} of type {type(getattr(model_instance, self.attname))}\\n"")\n')
+        new_lines.append('        except Exception as e:\n')
+        new_lines.append('            with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                f.write(f""Exception: {e}\\n"")\n')
+        new_lines.append('        value = getattr(model_instance, self.attname)\n')
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":\n')
+        new_lines.append('            try:\n')
+        new_lines.append('                with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                    f.write(f""Converting enum {value} to {value.value}\\n"")\n')
+        new_lines.append('            except:\n')
+        new_lines.append('                pass\n')
+        new_lines.append('            setattr(model_instance, self.attname, value.value)\n')
+        new_lines.append('        return getattr(model_instance, self.attname)\n')
+        new_lines.append('\n')
+        continue
+    
+    i += 1
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched pre_save method"")
+EOL"
+233,235,1,1183915816539708,1183916012996433,0,0,python fix_pre_save.py
+234,236,1,1183916013010269,1183916494273510,0,0,python reproduce_issue.py
+235,237,1,1183916494290822,1183916680361551,0,0,cat /tmp/pre_save_debug.txt
+236,238,1,1183916680463982,1183916866660921,0,0,"cat > fix_pre_save.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the Field class and the pre_save method
+new_lines = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    new_lines.append(line)
+    
+    if 'def pre_save(self, model_instance, add):' in line:
+        # Found the method, skip the original implementation
+        i += 1
+        while i < len(lines) and '    def ' not in lines[i] and not lines[i].strip() == '':
+            i += 1
+        # Add our implementation
+        new_lines.append('        try:\n')
+        new_lines.append('            with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                f.write(f""pre_save called with {getattr(model_instance, self.attname)} of type {type(getattr(model_instance, self.attname))}\\n"")\n')
+        new_lines.append('        except Exception as e:\n')
+        new_lines.append('            with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                f.write(f""Exception: {e}\\n"")\n')
+        new_lines.append('        value = getattr(model_instance, self.attname)\n')
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":\n')
+        new_lines.append('            try:\n')
+        new_lines.append('                with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                    f.write(f""Converting enum {value} to {value.value}\\n"")\n')
+        new_lines.append('                    f.write(f""Before setattr: {getattr(model_instance, self.attname)}\\n"")\n')
+        new_lines.append('            except:\n')
+        new_lines.append('                pass\n')
+        new_lines.append('            setattr(model_instance, self.attname, value.value)\n')
+        new_lines.append('            try:\n')
+        new_lines.append('                with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                    f.write(f""After setattr: {getattr(model_instance, self.attname)}\\n"")\n')
+        new_lines.append('            except:\n')
+        new_lines.append('                pass\n')
+        new_lines.append('        return getattr(model_instance, self.attname)\n')
+        new_lines.append('\n')
+        continue
+    
+    i += 1
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched pre_save method"")
+EOL"
+237,239,1,1183916866671300,1183917062354888,0,0,python fix_pre_save.py
+238,240,1,1183917062370097,1183917545907219,0,0,python reproduce_issue.py
+239,241,1,1183917545922618,1183917733134927,0,0,cat /tmp/pre_save_debug.txt
+240,242,1,1183917733212121,1183917914471479,0,0,"cat > fix_pre_save.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the Field class and the pre_save method
+new_lines = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    new_lines.append(line)
+    
+    if 'def pre_save(self, model_instance, add):' in line:
+        # Found the method, skip the original implementation
+        i += 1
+        while i < len(lines) and '    def ' not in lines[i] and not lines[i].strip() == '':
+            i += 1
+        # Add our implementation
+        new_lines.append('        try:\n')
+        new_lines.append('            with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                f.write(f""pre_save called with {getattr(model_instance, self.attname)} of type {type(getattr(model_instance, self.attname))}\\n"")\n')
+        new_lines.append('                f.write(f""hasattr(value, \\\""value\\\"") = {hasattr(getattr(model_instance, self.attname), \\\""value\\\"")}\\n"")\n')
+        new_lines.append('                f.write(f""type(value).__module__ = {type(getattr(model_instance, self.attname)).__module__}\\n"")\n')
+        new_lines.append('        except Exception as e:\n')
+        new_lines.append('            with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                f.write(f""Exception: {e}\\n"")\n')
+        new_lines.append('        value = getattr(model_instance, self.attname)\n')
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":\n')
+        new_lines.append('            try:\n')
+        new_lines.append('                with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                    f.write(f""Converting enum {value} to {value.value}\\n"")\n')
+        new_lines.append('                    f.write(f""Before setattr: {getattr(model_instance, self.attname)}\\n"")\n')
+        new_lines.append('            except:\n')
+        new_lines.append('                pass\n')
+        new_lines.append('            setattr(model_instance, self.attname, value.value)\n')
+        new_lines.append('            try:\n')
+        new_lines.append('                with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                    f.write(f""After setattr: {getattr(model_instance, self.attname)}\\n"")\n')
+        new_lines.append('            except:\n')
+        new_lines.append('                pass\n')
+        new_lines.append('        return getattr(model_instance, self.attname)\n')
+        new_lines.append('\n')
+        continue
+    
+    i += 1
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched pre_save method"")
+EOL"
+241,243,1,1183917914479755,1183918114685290,0,0,python fix_pre_save.py
+242,244,1,1183918114699477,1183918382909835,1,1,python reproduce_issue.py
+243,245,1,1183918382925865,1183918573576507,0,0,"cat > fix_pre_save.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the Field class and the pre_save method
+new_lines = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    new_lines.append(line)
+    
+    if 'def pre_save(self, model_instance, add):' in line:
+        # Found the method, skip the original implementation
+        i += 1
+        while i < len(lines) and '    def ' not in lines[i] and not lines[i].strip() == '':
+            i += 1
+        # Add our implementation
+        new_lines.append('        try:\n')
+        new_lines.append('            with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                f.write(f""pre_save called with {getattr(model_instance, self.attname)} of type {type(getattr(model_instance, self.attname))}\\n"")\n')
+        new_lines.append('                f.write(f""hasattr(value, value) = {hasattr(getattr(model_instance, self.attname), ""value"")}\\n"")\n')
+        new_lines.append('                f.write(f""type(value).__module__ = {type(getattr(model_instance, self.attname)).__module__}\\n"")\n')
+        new_lines.append('        except Exception as e:\n')
+        new_lines.append('            with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                f.write(f""Exception: {e}\\n"")\n')
+        new_lines.append('        value = getattr(model_instance, self.attname)\n')
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":\n')
+        new_lines.append('            try:\n')
+        new_lines.append('                with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                    f.write(f""Converting enum {value} to {value.value}\\n"")\n')
+        new_lines.append('                    f.write(f""Before setattr: {getattr(model_instance, self.attname)}\\n"")\n')
+        new_lines.append('            except:\n')
+        new_lines.append('                pass\n')
+        new_lines.append('            setattr(model_instance, self.attname, value.value)\n')
+        new_lines.append('            try:\n')
+        new_lines.append('                with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                    f.write(f""After setattr: {getattr(model_instance, self.attname)}\\n"")\n')
+        new_lines.append('            except:\n')
+        new_lines.append('                pass\n')
+        new_lines.append('        return getattr(model_instance, self.attname)\n')
+        new_lines.append('\n')
+        continue
+    
+    i += 1
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched pre_save method"")
+EOL"
+244,246,1,1183918573591505,1183918778062564,0,0,python fix_pre_save.py
+245,247,1,1183918778166624,1183919035625005,1,1,python reproduce_issue.py
+246,249,1,1183919035690718,1183919218768543,0,0,"cat > fix_pre_save.py << 'EOL'
+# Read the file with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Find the Field class and the pre_save method
+new_lines = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    new_lines.append(line)
+    
+    if 'def pre_save(self, model_instance, add):' in line:
+        # Found the method, skip the original implementation
+        i += 1
+        while i < len(lines) and '    def ' not in lines[i] and not lines[i].strip() == '':
+            i += 1
+        # Add our implementation
+        new_lines.append('        try:\n')
+        new_lines.append('            with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                f.write(f""pre_save called with {getattr(model_instance, self.attname)} of type {type(getattr(model_instance, self.attname))}\\n"")\n')
+        new_lines.append('                f.write(f""hasattr(value, \\\""value\\\"") = {hasattr(getattr(model_instance, self.attname), \\\""value\\\"")}\\n"")\n')
+        new_lines.append('                f.write(f""type(value).__module__ = {type(getattr(model_instance, self.attname)).__module__}\\n"")\n')
+        new_lines.append('        except Exception as e:\n')
+        new_lines.append('            with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                f.write(f""Exception: {e}\\n"")\n')
+        new_lines.append('        value = getattr(model_instance, self.attname)\n')
+        new_lines.append('        # Handle enum values by extracting their value property\n')
+        new_lines.append('        if hasattr(value, ""value"") and type(value).__module__ == ""enum"":\n')
+        new_lines.append('            try:\n')
+        new_lines.append('                with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                    f.write(f""Converting enum {value} to {value.value}\\n"")\n')
+        new_lines.append('                    f.write(f""Before setattr: {getattr(model_instance, self.attname)}\\n"")\n')
+        new_lines.append('            except:\n')
+        new_lines.append('                pass\n')
+        new_lines.append('            setattr(model_instance, self.attname, value.value)\n')
+        new_lines.append('            try:\n')
+        new_lines.append('                with open(""/tmp/pre_save_debug.txt"", ""a"") as f:\n')
+        new_lines.append('                    f.write(f""After setattr: {getattr(model_instance, self.attname)}\\n"")\n')
+        new_lines.append('            except:\n')
+        new_lines.append('                pass\n')
+        new_lines.append('        return getattr(model_instance, self.attname)\n')
+        new_lines.append('\n')
+        continue
+    
+    i += 1
+
+# Write the file back with UTF-8 encoding
+with open('django/db/models/fields/__init__.py', 'w', encoding='utf-8') as f:
+    f.writelines(new_lines)
+
+print(""Successfully patched pre_save method"")
+EOL"
+247,250,1,1183919218777229,1183919416152066,0,0,python fix_pre_save.py

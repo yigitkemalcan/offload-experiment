@@ -68,7 +68,8 @@ def replay(task: dict, cid: str) -> list[dict]:
     return log
 
 
-def run_trial(task: dict, out_dir: Path, args) -> dict:
+def run_trial(task: dict, out_dir: Path, args, measure=ro.measure_offload) -> dict:
+    """measure has measure_offload()'s signature and runs while the container is frozen."""
     env = task["env"]
     name = f"end-offload-{task['task_id'].replace('__', '-').lower()[:40]}-{os.getpid()}"
     rec = {k: task[k] for k in ("task_id", "orig_exit_status", "orig_steps", "hit_step_limit",
@@ -113,7 +114,7 @@ def run_trial(task: dict, out_dir: Path, args) -> dict:
         samplers.append(sampler)
         sampler.start()
         # empty baseline: the host cache was dropped before this task, so every cached page is the task's
-        ro.measure_offload(cg, cid, upper, roots, {}, sampler, rec, out_dir)
+        measure(cg, cid, upper, roots, {}, sampler, rec, out_dir)
     finally:
         try:
             cg.thaw()
@@ -140,10 +141,11 @@ SUMMARY = ["task_id", "orig_exit_status", "hit_step_limit", "orig_steps", "n_act
            "usage_after_promote_bytes", "promote_recovered_fraction", "error"]
 
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def main(measure=ro.measure_offload, out=ROOT / "results", doc=__doc__, summary=SUMMARY):
+    """Also the driver of the variants in no-snapshot/ and snapshot-promote/ (other measure, out, columns)."""
+    ap = argparse.ArgumentParser(description=doc, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("run_dir", type=Path)
-    ap.add_argument("--out", type=Path, default=ROOT / "results")
+    ap.add_argument("--out", type=Path, default=out)
     ap.add_argument("--sample-interval", type=float, default=0.005, help="during the measurement (s)")
     ap.add_argument("--replay-sample-interval", type=float, default=0.5, help="while replaying (s)")
     ap.add_argument("--tasks", nargs="*", help="only these task ids")
@@ -166,7 +168,7 @@ def main():
         out_dir.mkdir(exist_ok=True)
         try:
             ro.drop_caches()
-            rec = run_trial(task, out_dir, args)
+            rec = run_trial(task, out_dir, args, measure)
         except Exception as e:  # keep going; record the failure
             rec = {"task_id": task["task_id"], "triggered": False, "error": repr(e)}
         (out_dir / "trial.json").write_text(json.dumps(rec, indent=1, default=str))
@@ -176,7 +178,7 @@ def main():
               f"size={mib(rec.get('freeze_usage_in_bytes'))} cache={mib(rec.get('freeze_cache'))} "
               f"demote={rec.get('demote_s')} promote={rec.get('promote_s')} err={rec.get('error')}", flush=True)
     rows = [json.loads(p.read_text()) for p in sorted(out_root.glob("*/trial.json"))]
-    pd.DataFrame(rows).reindex(columns=SUMMARY).to_csv(out_root / "trials.csv", index=False)
+    pd.DataFrame(rows).reindex(columns=summary).to_csv(out_root / "trials.csv", index=False)
     print(f"wrote {out_root / 'trials.csv'}", flush=True)
 
 
