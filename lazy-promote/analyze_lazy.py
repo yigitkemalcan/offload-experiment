@@ -62,9 +62,10 @@ def stats(x: pd.Series) -> dict:
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("results", type=Path, nargs="?", default=Path(__file__).resolve().parent / "results")
+    ap.add_argument("--out", type=Path, help="output directory (default <results>/analysis)")
     args = ap.parse_args()
-    out_dir = args.results / "analysis"
-    out_dir.mkdir(exist_ok=True)
+    out_dir = args.out or args.results / "analysis"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     calls = pair(load(args.results))
     calls.to_csv(out_dir / "calls.csv", index=False)
