@@ -1,0 +1,311 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2397703767583482,2397703960557896,0,0,ls -la
+1,1,2,2397703960577643,2397704554414922,0,0,"find . -type f -name ""*.py"" | grep -v ""__pycache__"" | grep -v ""\.pyc$"""
+2,2,1,2397704563040866,2397704791704153,0,0,"find . -type f -name ""query.py"" | grep django"
+3,3,1,2397704794457635,2397704912867521,0,0,"grep -A 20 ""def in_bulk"" django/db/models/query.py"
+4,4,1,2397704915584847,2397705145017218,0,0,"find . -type f -name ""options.py"" | grep django"
+5,5,1,2397705147760371,2397705265334508,0,0,"grep -A 10 ""get_field"" django/db/models/options.py"
+6,6,1,2397705269365502,2397705387223721,0,0,"grep -A 10 ""constraints"" django/db/models/options.py"
+7,7,1,2397705390023520,2397705618944645,0,0,"find . -type f -name ""constraints.py"" | grep django"
+8,8,1,2397705621752379,2397705739903231,0,0,cat django/db/models/constraints.py
+9,9,1,2397705742705635,2397705971984890,0,0,"find . -type f -name ""fields.py"" | grep django"
+10,10,1,2397705974796421,2397706092232740,0,0,ls -la django/db/models/fields/
+11,11,1,2397706094947801,2397706213762715,0,0,"grep -A 50 ""class Field"" django/db/models/fields/__init__.py"
+12,12,1,2397706216535894,2397706336404731,0,0,mkdir -p /testbed/reproduction && touch /testbed/reproduction/test_in_bulk.py
+13,13,1,2397706338691099,2397706455517642,0,0,"cat > /testbed/reproduction/test_in_bulk.py << 'EOL'
+from django.db import models
+from django.db.models import UniqueConstraint
+
+class Article(models.Model):
+    slug = models.CharField(max_length=255)
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=[""slug""], name=""%(app_label)s_%(class)s_slug_unq"")
+        ]
+
+# Try to use in_bulk with the slug field
+try:
+    Article.objects.in_bulk(field_name=""slug"")
+    print(""Success: in_bulk worked with slug field"")
+except ValueError as e:
+    print(f""Error: {e}"")
+EOL"
+14,14,1,2397706457813980,2397706574814528,0,0,"cat > /testbed/reproduction/settings.py << 'EOL'
+SECRET_KEY = 'dummy'
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:',
+    }
+}
+
+INSTALLED_APPS = [
+    'reproduction',
+]
+
+USE_TZ = False
+EOL"
+15,15,1,2397706577081470,2397706694029831,0,0,touch /testbed/reproduction/__init__.py
+16,16,1,2397706696281725,2397706812309262,0,0,"cat > /testbed/reproduction/test_in_bulk.py << 'EOL'
+import os
+import django
+from django.conf import settings
+
+# Configure Django settings
+if not settings.configured:
+    settings.configure(
+        SECRET_KEY='dummy',
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'reproduction',
+        ],
+        USE_TZ=False
+    )
+
+django.setup()
+
+from django.db import models
+from django.db.models import UniqueConstraint
+
+class Article(models.Model):
+    slug = models.CharField(max_length=255)
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=[""slug""], name=""%(app_label)s_%(class)s_slug_unq"")
+        ]
+
+    def __str__(self):
+        return self.slug
+
+# Create a few articles
+Article.objects.create(slug='first-article')
+Article.objects.create(slug='second-article')
+
+# Try to use in_bulk with the slug field
+try:
+    result = Article.objects.in_bulk(field_name=""slug"")
+    print(""Success: in_bulk worked with slug field"")
+    print(f""Result: {result}"")
+except ValueError as e:
+    print(f""Error: {e}"")
+EOL"
+17,17,1,2397706814649883,2397707498920707,1,1,cd /testbed/reproduction && python test_in_bulk.py
+18,18,1,2397707501618246,2397707619989559,0,0,"cat > /testbed/reproduction/test_in_bulk.py << 'EOL'
+import os
+import django
+from django.conf import settings
+from django.apps import AppConfig
+
+# Configure Django settings
+if not settings.configured:
+    settings.configure(
+        SECRET_KEY='dummy',
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'reproduction',
+        ],
+        USE_TZ=False
+    )
+
+class ReproductionConfig(AppConfig):
+    name = 'reproduction'
+
+# Register the app config
+if 'reproduction' not in settings.INSTALLED_APPS:
+    settings.INSTALLED_APPS.append('reproduction')
+
+django.setup()
+
+from django.db import models
+from django.db.models import UniqueConstraint
+
+class Article(models.Model):
+    slug = models.CharField(max_length=255)
+
+    class Meta:
+        app_label = 'reproduction'
+        constraints = [
+            UniqueConstraint(fields=[""slug""], name=""%(app_label)s_%(class)s_slug_unq"")
+        ]
+
+    def __str__(self):
+        return self.slug
+
+# Create a few articles
+Article.objects.create(slug='first-article')
+Article.objects.create(slug='second-article')
+
+# Try to use in_bulk with the slug field
+try:
+    result = Article.objects.in_bulk(field_name=""slug"")
+    print(""Success: in_bulk worked with slug field"")
+    print(f""Result: {result}"")
+except ValueError as e:
+    print(f""Error: {e}"")
+EOL"
+19,19,1,2397707622250150,2397708060656296,1,1,cd /testbed/reproduction && python test_in_bulk.py
+20,20,1,2397708063273684,2397708181406141,0,0,"cat > /testbed/reproduction/test_in_bulk.py << 'EOL'
+import os
+import django
+from django.conf import settings
+from django.apps import AppConfig
+from django.core.management import call_command
+from django.db import connection
+
+# Configure Django settings
+if not settings.configured:
+    settings.configure(
+        SECRET_KEY='dummy',
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'reproduction',
+        ],
+        USE_TZ=False
+    )
+
+class ReproductionConfig(AppConfig):
+    name = 'reproduction'
+
+# Register the app config
+if 'reproduction' not in settings.INSTALLED_APPS:
+    settings.INSTALLED_APPS.append('reproduction')
+
+django.setup()
+
+from django.db import models
+from django.db.models import UniqueConstraint
+
+class Article(models.Model):
+    slug = models.CharField(max_length=255)
+
+    class Meta:
+        app_label = 'reproduction'
+        constraints = [
+            UniqueConstraint(fields=[""slug""], name=""%(app_label)s_%(class)s_slug_unq"")
+        ]
+
+    def __str__(self):
+        return self.slug
+
+# Create the table
+with connection.schema_editor() as schema_editor:
+    schema_editor.create_model(Article)
+
+# Create a few articles
+Article.objects.create(slug='first-article')
+Article.objects.create(slug='second-article')
+
+# Try to use in_bulk with the slug field
+try:
+    result = Article.objects.in_bulk(field_name=""slug"")
+    print(""Success: in_bulk worked with slug field"")
+    print(f""Result: {result}"")
+except ValueError as e:
+    print(f""Error: {e}"")
+EOL"
+21,21,1,2397708183619383,2397708575531854,0,0,cd /testbed/reproduction && python test_in_bulk.py
+22,23,1,2397708578449524,2397708693945597,2,2,"cp django/db/models/query.py django/db/models/query.py.bak && sed -i '/if field_name != \'pk\' and not self.model._meta.get_field(field_name).unique:/c\        if field_name != \'pk\' and not (self.model._meta.get_field(field_name).unique or field_name in self._get_unique_fields()):\n            raise ValueError(""in_bulk()\'s field_name must be a unique field but %r isn\'t."" % field_name)' django/db/models/query.py"
+23,24,1,2397708696779009,2397708817615161,0,0,"cp django/db/models/query.py django/db/models/query.py.bak && grep -n ""def in_bulk"" django/db/models/query.py.bak"
+24,25,1,2397708820463932,2397708940915419,0,0,cp django/db/models/query.py django/db/models/query.py.bak && sed -i '689s/self.model._meta.get_field(field_name).unique:/self.model._meta.get_field(field_name).unique or field_name in self.model._meta.get_unique_fields()/' django/db/models/query.py
+25,26,1,2397708943214992,2397709059774746,1,1,"grep -n ""get_unique_fields"" django/db/models/options.py"
+26,27,1,2397709062052338,2397709181301094,0,0,cp django/db/models/query.py django/db/models/query.py.bak && sed -i '689s/self.model._meta.get_field(field_name).unique:/self.model._meta.get_field(field_name).unique or any(field_name in constraint.fields for constraint in self.model._meta.total_unique_constraints)/' django/db/models/query.py
+27,28,1,2397709183569950,2397709299963101,0,0,"cat > /testbed/reproduction/test_in_bulk.py << 'EOL'
+import os
+import django
+from django.conf import settings
+from django.apps import AppConfig
+from django.core.management import call_command
+from django.db import connection
+
+# Configure Django settings
+if not settings.configured:
+    settings.configure(
+        SECRET_KEY='dummy',
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'reproduction',
+        ],
+        USE_TZ=False
+    )
+
+class ReproductionConfig(AppConfig):
+    name = 'reproduction'
+
+# Register the app config
+if 'reproduction' not in settings.INSTALLED_APPS:
+    settings.INSTALLED_APPS.append('reproduction')
+
+django.setup()
+
+from django.db import models
+from django.db.models import UniqueConstraint
+
+class Article(models.Model):
+    slug = models.CharField(max_length=255)
+
+    class Meta:
+        app_label = 'reproduction'
+        constraints = [
+            UniqueConstraint(fields=[""slug""], name=""%(app_label)s_%(class)s_slug_unq"")
+        ]
+
+    def __str__(self):
+        return self.slug
+
+# Create the table
+with connection.schema_editor() as schema_editor:
+    schema_editor.create_model(Article)
+
+# Create a few articles
+Article.objects.create(slug='first-article')
+Article.objects.create(slug='second-article')
+
+# Try to use in_bulk with the slug field
+try:
+    result = Article.objects.in_bulk(field_name=""slug"")
+    print(""Success: in_bulk worked with slug field"")
+    print(f""Result: {result}"")
+except ValueError as e:
+    print(f""Error: {e}"")
+EOL"
+28,29,1,2397709302334379,2397709703425301,0,0,cd /testbed/reproduction && python test_in_bulk.py
+29,30,1,2397709706286997,2397709823880160,0,0,"grep -A 5 ""def in_bulk"" django/db/models/query.py"
+30,31,1,2397709826713542,2397709944056445,0,0,"grep -n ""unique field"" django/db/models/query.py"
+31,32,1,2397709946780903,2397710064181576,0,0,"sed -n '690,693p' django/db/models/query.py"
+32,33,1,2397710067005501,2397710183959877,2,2,cp django/db/models/query.py django/db/models/query.py.bak && sed -i '692s/if field_name != \'pk\' and not self.model._meta.get_field(field_name).unique:/if field_name != \'pk\' and not (self.model._meta.get_field(field_name).unique or any(field_name in constraint.fields for constraint in self.model._meta.total_unique_constraints)):' django/db/models/query.py
+33,34,1,2397710186807146,2397710301984812,2,2,cp django/db/models/query.py django/db/models/query.py.bak && perl -i -pe 'if($.==692){s/if field_name != \'pk\' and not self\.model\._meta\.get_field\(field_name\)\.unique:/if field_name != \'pk\' and not (self\.model\._meta\.get_field\(field_name\)\.unique or any\(field_name in constraint\.fields for constraint in self\.model\._meta\.total_unique_constraints\)):/}' django/db/models/query.py
+34,35,1,2397710304839254,2397710419790117,2,2,"cp django/db/models/query.py django/db/models/query.py.bak && cat django/db/models/query.py.bak | sed '692s/.*/        if field_name != \'pk\' and not (self.model._meta.get_field(field_name).unique or any(field_name in constraint.fields for constraint in self.model._meta.total_unique_constraints)):\n            raise ValueError(""in_bulk()\'s field_name must be a unique field but %r isn\'t."" % field_name)/' > django/db/models/query.py.tmp && mv django/db/models/query.py.tmp django/db/models/query.py"
+35,36,1,2397710422633398,2397710543622019,2,2,"cp django/db/models/query.py django/db/models/query.py.bak && sed -n '1,691p' django/db/models/query.py.bak > django/db/models/query.py.tmp && cat >> django/db/models/query.py.tmp << 'EOL'
+        if field_name != 'pk' and not (self.model._meta.get_field(field_name).unique or any(field_name in constraint.fields for constraint in self.model._meta.total_unique_constraints)):
+            raise ValueError(""in_bulk()'s field_name must be a unique field but %r isn't."" % field_name)
+EOL
+&& sed -n '693,9999p' django/db/models/query.py.bak >> django/db/models/query.py.tmp && mv django/db/models/query.py.tmp django/db/models/query.py"
+36,37,1,2397710546395038,2397710679756665,0,0,"cp django/db/models/query.py django/db/models/query.py.bak && python3 -c ""lines = open('django/db/models/query.py.bak').readlines(); lines[691] = '        if field_name != \'pk\' and not (self.model._meta.get_field(field_name).unique or any(field_name in constraint.fields for constraint in self.model._meta.total_unique_constraints)):\n'; lines[692] = '            raise ValueError(\""in_bulk()\'s field_name must be a unique field but %r isn\'t.\"" % field_name)\n'; open('django/db/models/query.py', 'w').writelines(lines)"""
+37,38,1,2397710682378492,2397710800059614,1,1,diff django/db/models/query.py.bak django/db/models/query.py
+38,39,1,2397710802876125,2397711203277106,0,0,cd /testbed/reproduction && python test_in_bulk.py
+39,40,1,2397711206319860,2397711337687385,0,0,git diff -- django/db/models/query.py > patch.txt
+40,41,1,2397711340300946,2397711457487302,0,0,cat patch.txt
+41,42,1,2397711460371299,2397711577009439,,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

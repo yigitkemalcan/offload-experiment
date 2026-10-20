@@ -18,6 +18,12 @@ rest of it, from the snapshot or from the files. Faulting them through the mappi
 with the device's mmap read-around (4 MiB on md0, so up to 1024x the mapped pages). In snapshot-promote they
 would then exist twice, as the files' cache and as the snapshot, and the recovered fraction would exceed 1.
 
+A second change: the page-cache walk keeps one name per file (one_name_per_file()). It goes by path, and SWE-bench
+images hard-link ~27k files between conda's pkgs/ and the environments, so a cached file with two names was
+recorded twice: snapshot-promote copied its pages into the snapshot twice and read them back twice (recovered
+fraction up to 1.16 in the first SWE-bench runs), and no-snapshot re-read them twice. cache_hardlink_duplicate_pages
+counts what was left out.
+
 In snapshot-promote, the snapshot's pages are read by the helper inside the container's memory cgroup, so they
 are charged to it (like a restored VM's memory). They are not the page cache of the container's own files, so
 those files and their dentries/inodes are not re-cached: promote_recovered_fraction counts snapshot pages.
@@ -66,7 +72,7 @@ from replay_offload import PAGE, now, walk_files  # noqa: E402
 
 # extra trials.csv columns (after replay_end.SUMMARY)
 SUMMARY_EXTRA = ["variant", "promote_files_s", "promote_snapshot_s", "promote_snapshot_bytes_read",
-                 "snapshot_pages_resident_before_promote"]
+                 "snapshot_pages_resident_before_promote", "cache_hardlink_duplicate_pages"]
 
 RESIDENT, FILE_OR_SHARED = 3 << 62, 1 << 61  # pagemap: present or swapped; file page or shared anonymous
 PROMOTE_MODES = ("serial", "threads", "threads-all")
@@ -111,6 +117,25 @@ def anon_pagemap_snapshot(pids: list[int]) -> dict:
     return snap
 
 
+def one_name_per_file(cache: dict) -> tuple[dict, int]:
+    """The page-cache walk ({path: ranges}) with each file under one name only: the names of a hard-linked file
+    share its inode and its cached pages, which the walk sees once per name (see the module doc). Returns the
+    walk without the other names and the pages they had."""
+    seen, out, duplicate_pages = set(), {}, 0
+    for path, ranges in cache.items():
+        try:
+            st = os.stat(path, follow_symlinks=False)
+        except OSError:  # gone since the walk: kept, its reads fail and are counted as before
+            out[path] = ranges
+            continue
+        if (st.st_dev, st.st_ino) in seen:
+            duplicate_pages += sum(length // PAGE for _, length in ranges)
+            continue
+        seen.add((st.st_dev, st.st_ino))
+        out[path] = ranges
+    return out, duplicate_pages
+
+
 def measure_offload_variant(cg: ro.Cgroup, cid, upper: Path, roots, cache_before, sampler: ro.Sampler, rec: dict,
                             out_dir, *, write_snapshot: bool, promote_from_snapshot: bool,
                             promote_mode: str = "serial", promote_threads: int = 8,
@@ -130,6 +155,7 @@ def measure_offload_variant(cg: ro.Cgroup, cid, upper: Path, roots, cache_before
     pids = cg.pids()
     pagemap = anon_pagemap_snapshot(pids)
     cache = ro.cache_delta(cache_before, ro.cache_snapshot(roots))
+    cache, rec["cache_hardlink_duplicate_pages"] = one_name_per_file(cache)
     rec["snapshot_s"] = (now() - t) / 1e9
     rec["pids"] = len(pids)
     rec["process_resident_pages"] = sum(v["pages"] + v["file_pages"] for v in pagemap.values())

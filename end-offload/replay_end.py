@@ -19,16 +19,43 @@ process a tool call left behind (background jobs, calls killed by the tool timeo
 The host page cache is dropped before every task, as in the peak experiment. Must run as root on the
 cgroup v1 host, with swap on (../setup_swap.sh). All times are CLOCK_MONOTONIC.
 
+--agent-inside: the same experiment with the task's agent inside its container (run_trial_inside()), instead of
+one controller on the host running the commands with `docker exec`. The container runs
+../agent-in-container/agent.py --hold: mini-swe-agent's DefaultAgent replaying the recorded model replies (no
+inference delay, as the docker-exec replay) and running the commands itself. As in the DABStep experiment
+(../../offload-experiment-dabstep/end-offload/replay_end.py): when the agent has finished, it writes done.json and
+waits, with its conversation in memory; the container is frozen and measured as above, so the agent's memory (its
+process, and the page cache of its runtime, ../agent-in-container/runtime, mounted read-only) is part of what is
+demoted and promoted; then it is thawed and released: the agent saves its trajectory and exits (it must have
+survived), and the replay is compared with the original run. The page-cache walk covers the runtime too. Results go to results-agent-inside/ (or
+<variant>/results-agent-inside/). Two differences besides the agent:
+  - the default measurement is the variants' "baseline" (offload_variants.py: demote and promote as
+    measure_offload(), but promote faults back only the process pages that belong to no file). The agent maps
+    tens of MiB of libraries; measure_offload() would fault those through /proc/<pid>/mem, reading 4 MiB around
+    each fault from md0.
+  - on a tool timeout the agent kills the command's process group (mini-swe-agent's local environment);
+    `docker exec` left it running. No command of the serial runs timed out.
+
+--parallel-swap THREADS (the variants only): the processes' memory is paged out to swap and read back by THREADS
+threads (offload_variants.py demote_mode pageout-threads, promote_mode threads; promote-modes/'s parallel-swap mode);
+the page cache is moved as before. Results go to <variant>/results[-agent-inside]-parallel-swap/.
+
 Usage (from this directory):
   sudo ../.venv/bin/python replay_end.py ../../swebench-runs/<run>            # -> results/<run>/
   sudo ../.venv/bin/python replay_end.py ../../swebench-runs/<run> --tasks django__django-10097
+  sudo ../.venv/bin/python replay_end.py ../../swebench-runs/<run> --agent-inside   # -> results-agent-inside/<run>/
+  sudo ../.venv/bin/python snapshot-promote/replay_snapshot_promote.py ../../swebench-runs/<run> --agent-inside \
+      --parallel-swap 8                       # -> snapshot-promote/results-agent-inside-parallel-swap/<run>/
 """
 
 import argparse
+import functools
 import json
 import os
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -38,6 +65,11 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(ROOT.parent / "peak"))
 import replay_offload as ro  # noqa: E402
 from replay_offload import now  # noqa: E402
+from offload_variants import SUMMARY_EXTRA, measure_offload_variant  # noqa: E402
+
+AGENT_IN_CONTAINER = ROOT.parent / "agent-in-container"
+sys.path.insert(0, str(AGENT_IN_CONTAINER))
+import replay_in_container as ric  # noqa: E402
 
 STEP_LIMIT_STATUS = "LimitsExceeded"
 
@@ -49,6 +81,7 @@ def load_tasks(run_dir: Path) -> list[dict]:
     for task in tasks:
         task["orig_steps"] = int(steps[task["task_id"]])
         task["hit_step_limit"] = task["orig_exit_status"] == STEP_LIMIT_STATUS
+        task["trace"] = (run_dir / "results" / task["task_id"] / f"{task['task_id']}.traj.json").resolve()
     return tasks
 
 
@@ -127,6 +160,113 @@ def run_trial(task: dict, out_dir: Path, args, measure=ro.measure_offload) -> di
     return rec
 
 
+# ---------------------------------------------------------------- the agent inside the container
+
+AGENT_MOUNTS = {"/opt/mswea-agent": ric.RUNTIME, "/opt/mswea-replay/agent.py": AGENT_IN_CONTAINER / "agent.py"}
+BASELINE_INSIDE = functools.partial(measure_offload_variant, write_snapshot=True, promote_from_snapshot=False)
+# extra trials.csv columns of --agent-inside
+SUMMARY_INSIDE = ["replay_exit_status", "faithful", "faithful_ignoring_order", "container_exit_code", "agent_ready_s",
+                  "end_marker_to_freeze_s"]
+
+
+def run_trial_inside(task: dict, out_dir: Path, args, measure=BASELINE_INSIDE) -> dict:
+    """run_trial() with the task's agent inside its container (--agent-inside, see the module doc)."""
+    env = task["env"]
+    name = f"end-offload-in-{task['task_id'].replace('__', '-').lower()[:40]}-{os.getpid()}"
+    rec = {k: task[k] for k in ("task_id", "orig_exit_status", "orig_steps", "hit_step_limit",
+                                "orig_p_usage_bytes", "threshold_bytes")}
+    rec |= {"image": env["image"], "n_actions": len(task["actions"]), "triggered": False, "agent_inside": True}
+    agent_dir = out_dir / "agent"
+    shutil.rmtree(agent_dir, ignore_errors=True)  # from an interrupted trial: its done.json would end this one at once
+    agent_dir.mkdir()
+    mounts = AGENT_MOUNTS | {"/opt/mswea-replay/trace.json": task["trace"]}
+    start = now()
+    cid = ro.docker("run", "-d", "--name", name, "-w", env["cwd"], "--init",
+                    *(x for dst, src in mounts.items() for x in ("-v", f"{src}:{dst}:ro")), "-v", f"{agent_dir}:/output",
+                    env["image"], "/opt/mswea-agent/python/bin/python3", "-I", "-B", "-u", "/opt/mswea-replay/agent.py",
+                    "--trace", "/opt/mswea-replay/trace.json", "--output", "/output", "--start-ns", str(start),
+                    "--sample-interval", "0", "--hold").stdout.strip()
+    rec["container_id"] = cid
+    cg = ro.Cgroup(cid)
+    samplers = []
+    try:
+        info = json.loads(ro.docker("inspect", cid).stdout)[0]
+        init_pid, upper = info["State"]["Pid"], Path(info["GraphDriver"]["Data"]["UpperDir"])
+        roots = [Path(info["GraphDriver"]["Data"]["MergedDir"]), Path(f"/proc/{init_pid}/root/dev/shm"), ric.RUNTIME]
+        rec["usage_at_start_bytes"] = cg.usage()
+
+        replay_sampler = ro.Sampler(cid, args.replay_sample_interval, out_dir / "replay_samples.csv")
+        samplers.append(replay_sampler)
+        replay_sampler.start()
+        done, deadline = agent_dir / "done.json", time.monotonic() + args.task_timeout
+        while not done.exists():
+            if not cg.mem.exists():
+                raise RuntimeError("the container exited before the end of the task: see agent/container.log")
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"the task did not end within {args.task_timeout} s")
+            time.sleep(0.005)
+
+        # ---- end of the task, the agent waiting: freeze, then demote / promote
+        t_end = now()
+        cg.freeze()
+        rec.update(triggered=True, trigger_source="end", trigger_ns=t_end, usage_at_trigger_bytes=cg.usage())
+        rec["frozen_ok"] = cg.wait_frozen()
+        rec["freeze_latency_s"] = (now() - t_end) / 1e9
+        replay_sampler.stop_event.set()
+        rec["peak_usage_during_replay_bytes"] = max((r[6] for r in replay_sampler.rows), default=0)
+        sampler = ro.Sampler(cid, args.sample_interval, out_dir / "samples.csv")
+        sampler.phase = "frozen"
+        samplers.append(sampler)
+        sampler.start()
+        measure(cg, cid, upper, roots, {}, sampler, rec, out_dir)
+
+        # ---- the agent must survive: thaw, release it (it saves its trajectory and exits)
+        cg.thaw()
+        sampler.phase = "thawed"
+        (agent_dir / "release").touch()
+        try:
+            rec["container_exit_code"] = int(subprocess.run(["docker", "wait", cid], capture_output=True, text=True,
+                                                             timeout=120).stdout.strip() or -1)
+        except (subprocess.TimeoutExpired, ValueError):
+            rec["container_exit_code"] = None
+    finally:
+        try:
+            cg.thaw()
+        except OSError:
+            pass
+        for s in samplers:
+            s.finish()
+        logs = subprocess.run(["docker", "logs", cid], capture_output=True, text=True)
+        (agent_dir / "container.log").write_text(logs.stdout + logs.stderr)
+        subprocess.run(["docker", "rm", "-f", cid], capture_output=True)
+        cg.close()
+    return rec | agent_run(task, out_dir, start, t_end)
+
+
+def agent_run(task: dict, out_dir: Path, start_ns: int, end_ns: int) -> dict:
+    """From the agent's trajectory: actions.csv (as run_trial()'s) and the comparison with the original run."""
+    done = json.loads((out_dir / "agent" / "done.json").read_text())
+    timing = {"agent_ready_s": (done["ready_mono_ns"] - start_ns) / 1e9,
+              "replay_s": (done["end_mono_ns"] - done["ready_mono_ns"]) / 1e9,
+              "end_marker_to_freeze_s": (end_ns - done["end_mono_ns"]) / 1e9}
+    path = out_dir / "agent" / task["trace"].name
+    if not path.exists():  # the agent did not save it after the release
+        return timing | {"replay_trajectory": False, "faithful": False}
+    replay = json.loads(path.read_text())
+    timings = [t for s in replay["step_timings"] if s["inference"]["outcome"] != "FormatError" for t in s["tools"]]
+    orig = task["actions"]
+    log = [{"index": i, "step": a["step"], "action": a["action"], "start_ns": t["start_mono_ns"],
+            "end_ns": t["end_mono_ns"], "returncode": a["orig_returncode"],
+            "orig_returncode": orig[i]["orig_returncode"] if i < len(orig) else None, "command": a["command"]}
+           for i, (a, t) in enumerate(zip(ro.load_actions(replay), timings))]
+    pd.DataFrame(log, dtype=object).to_csv(out_dir / "actions.csv", index=False)  # return codes stay integers
+    rec = timing | {"actions_replayed": len(log)}
+    if log:
+        rec.update(step=log[-1]["step"], action=log[-1]["action"], action_index=log[-1]["index"],
+                   command=log[-1]["command"])
+    return rec | ric.compare_trajectories(json.loads(task["trace"].read_text()), replay)
+
+
 # ---------------------------------------------------------------- driver
 
 SUMMARY = ["task_id", "orig_exit_status", "hit_step_limit", "orig_steps", "n_actions", "actions_replayed",
@@ -141,21 +281,58 @@ SUMMARY = ["task_id", "orig_exit_status", "hit_step_limit", "orig_steps", "n_act
            "usage_after_promote_bytes", "promote_recovered_fraction", "error"]
 
 
+# extra trials.csv columns of --parallel-swap
+SUMMARY_PARALLEL_SWAP = ["demote_mode", "demote_threads", "demote_pageout_s", "demote_pageout_bytes",
+                         "demote_pageout_errors", "promote_mode", "promote_threads"]
+
+
+def add_agent_inside_args(ap: argparse.ArgumentParser):
+    ap.add_argument("--agent-inside", action="store_true", help="the task's agent runs inside its container")
+    ap.add_argument("--replay-sample-interval", type=float, default=0.5, help="while replaying (s)")
+    ap.add_argument("--task-timeout", type=float, default=4 * 3600,
+                    help="--agent-inside: give up on a task whose agent has not finished after this many seconds")
+
+
+def check_agent_runtime():
+    if not (ric.RUNTIME / "python" / "bin" / "python3").exists():
+        sys.exit(f"no agent runtime: run `bash {AGENT_IN_CONTAINER / 'setup_runtime.sh'}` first")
+
+
 def main(measure=ro.measure_offload, out=ROOT / "results", doc=__doc__, summary=SUMMARY):
     """Also the driver of the variants in no-snapshot/ and snapshot-promote/ (other measure, out, columns)."""
     ap = argparse.ArgumentParser(description=doc, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("run_dir", type=Path)
-    ap.add_argument("--out", type=Path, default=out)
+    ap.add_argument("--out", type=Path, help=f"default: {out.name}/, with --agent-inside {out.name}-agent-inside/, "
+                                             f"with --parallel-swap also -parallel-swap")
     ap.add_argument("--sample-interval", type=float, default=0.005, help="during the measurement (s)")
-    ap.add_argument("--replay-sample-interval", type=float, default=0.5, help="while replaying (s)")
     ap.add_argument("--tasks", nargs="*", help="only these task ids")
+    ap.add_argument("--parallel-swap", type=int, default=0, metavar="THREADS",
+                    help="no-snapshot/ and snapshot-promote/: page the processes' memory out to swap and read it back "
+                         "with THREADS threads (promote-modes/'s parallel-swap); results go to <out>-parallel-swap/")
+    add_agent_inside_args(ap)
     args = ap.parse_args()
+    if args.parallel_swap:
+        if not (isinstance(measure, functools.partial) and measure.func is measure_offload_variant):
+            ap.error("--parallel-swap is for the variants: run no-snapshot/ or snapshot-promote/")
+        measure = functools.partial(measure, demote_mode="pageout-threads", promote_mode="threads",
+                                    demote_threads=args.parallel_swap, promote_threads=args.parallel_swap)
+        summary = summary + SUMMARY_PARALLEL_SWAP
     if os.geteuid() != 0:
         sys.exit("must run as root (cgroup writes, /proc/<pid>/mem, overlay dirs)")
     if not Path("/proc/swaps").read_text().strip().count("\n"):
         sys.exit("no swap enabled: run setup_swap.sh first")
+    trial = run_trial
+    if args.agent_inside:
+        check_agent_runtime()
+        trial = run_trial_inside
+        if measure is ro.measure_offload:
+            measure, summary = BASELINE_INSIDE, summary + SUMMARY_EXTRA
+        summary = summary + SUMMARY_INSIDE
+        out = out.with_name(f"{out.name}-agent-inside")
+    if args.parallel_swap:
+        out = out.with_name(f"{out.name}-parallel-swap")
     sys.setswitchinterval(0.0005)
-    out_root = args.out / args.run_dir.name
+    out_root = (args.out or out) / args.run_dir.name
     out_root.mkdir(parents=True, exist_ok=True)
     tasks = load_tasks(args.run_dir)
     if args.tasks:
@@ -168,7 +345,7 @@ def main(measure=ro.measure_offload, out=ROOT / "results", doc=__doc__, summary=
         out_dir.mkdir(exist_ok=True)
         try:
             ro.drop_caches()
-            rec = run_trial(task, out_dir, args, measure)
+            rec = trial(task, out_dir, args, measure)
         except Exception as e:  # keep going; record the failure
             rec = {"task_id": task["task_id"], "triggered": False, "error": repr(e)}
         (out_dir / "trial.json").write_text(json.dumps(rec, indent=1, default=str))

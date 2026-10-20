@@ -1,0 +1,306 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2381690695945329,2381691395992301,0,0,"find . -type f -name ""*.py"" | grep -v ""__pycache__"" | grep -v ""\.pyc$"" | sort"
+1,2,1,2381691403434789,2381691976845500,0,0,"find . -type f -name ""*.py"" | xargs grep -l ""OneToOneField"" | head -20"
+2,3,1,2381691979844361,2381692114512381,0,0,"find ./django/db -type f -name ""*.py"" | xargs grep -l ""parent_link"" | sort"
+3,4,1,2381692117439468,2381692238690129,0,0,head -n 100 ./django/db/models/base.py
+4,5,1,2381692241642163,2381692375726249,0,0,"grep -A 20 -B 20 ""parent_link"" ./django/db/models/fields/related.py"
+5,6,1,2381692380197727,2381692685034287,0,0,"find . -type f -name ""*.py"" | xargs grep -l ""Add parent_link=True"""
+6,7,1,2381692687937139,2381692819699600,0,0,"grep -A 30 -B 30 ""Add parent_link=True"" ./django/db/models/options.py"
+7,8,1,2381692822639752,2381692948066073,0,0,"grep -A 20 -B 20 ""get_ancestor_link"" ./django/db/models/options.py"
+8,9,1,2381692951002958,2381693076606008,0,0,"grep -A 10 -B 10 ""self\.parents"" ./django/db/models/options.py"
+9,10,1,2381693079442096,2381693211486004,0,0,"grep -A 10 -B 10 ""parents\["" ./django/db/models/options.py"
+10,11,1,2381693214428170,2381693347426369,0,0,"find ./django/db/models -type f -name ""*.py"" | xargs grep -l ""parents\s*=\s*"""
+11,12,1,2381693350350521,2381693481572295,0,0,"grep -A 20 -B 20 ""parents\s*=\s*"" ./django/db/models/base.py"
+12,13,1,2381693484486098,2381693617488300,0,0,"grep -A 10 -B 10 ""parent_link"" ./django/db/models/base.py"
+13,14,1,2381693620647332,2381693750030947,0,0,cat > reproduce_issue.py
+14,15,1,2381693752969185,2381693883216637,2,2,"echo 'from django.db import models
+
+class Document(models.Model):
+    pass
+
+class Picking(Document):
+    document_ptr = models.OneToOneField(Document, on_delete=models.CASCADE, parent_link=True, related_name=""+"")
+    origin = models.OneToOneField(Document, related_name=""picking"", on_delete=models.PROTECT)
+
+if __name__ == ""__main__"":
+    print(""If this script runs without error, the issue is fixed."")
+    print(""Otherwise, you\'ll see: ImproperlyConfigured: Add parent_link=True to appname.Picking.origin."")' > reproduce_issue.py"
+15,16,1,2381693886159785,2381694038815539,0,0,"python3 -c ""f = open('reproduce_issue.py', 'w'); f.write('from django.db import models\n\nclass Document(models.Model):\n    pass\n\nclass Picking(Document):\n    document_ptr = models.OneToOneField(Document, on_delete=models.CASCADE, parent_link=True, related_name=\""+\"")\n    origin = models.OneToOneField(Document, related_name=\""picking\"", on_delete=models.PROTECT)\n\nif __name__ == \""__main__\"":\n    print(\""If this script runs without error, the issue is fixed.\"")\n    print(\""Otherwise, you\\'ll see: ImproperlyConfigured: Add parent_link=True to appname.Picking.origin.\"")'); f.close()"""
+16,17,1,2381694041855257,2381694596599257,1,1,python3 reproduce_issue.py
+17,18,1,2381694599550730,2381694738407132,0,0,"python3 -c ""f = open('reproduce_issue.py', 'w'); f.write('import django\nfrom django.conf import settings\nfrom django.db import models\n\nif not settings.configured:\n    settings.configure(\n        DEBUG=True,\n        DATABASES={\n            \""default\"": {\n                \""ENGINE\"": \""django.db.backends.sqlite3\"",\n                \""NAME\"": \"":memory:\""\n            }\n        },\n        INSTALLED_APPS=[\""__main__\""]\n    )\n    django.setup()\n\nclass Document(models.Model):\n    pass\n\nclass Picking(Document):\n    document_ptr = models.OneToOneField(Document, on_delete=models.CASCADE, parent_link=True, related_name=\""+\"")\n    origin = models.OneToOneField(Document, related_name=\""picking\"", on_delete=models.PROTECT)\n\nif __name__ == \""__main__\"":\n    print(\""If this script runs without error, the issue is fixed.\"")\n    print(\""Otherwise, you\\'ll see: ImproperlyConfigured: Add parent_link=True to appname.Picking.origin.\"")'); f.close()"""
+18,19,1,2381694741348476,2381695250534219,1,1,python3 reproduce_issue.py
+19,20,1,2381695253556284,2381695379108169,0,0,"grep -A 40 -B 10 ""Collect the parent links"" ./django/db/models/base.py"
+20,21,1,2381695382056877,2381695512079237,0,0,cp ./django/db/models/base.py ./django/db/models/base.py.bak
+21,22,1,2381695515136418,2381695640097247,0,0,"sed -i '/# Locate OneToOneField instances./,/for field in base._meta.local_fields:/c\
+        # Collect the parent links for multi-table inheritance.\
+        parent_links = {}\
+        for base in reversed([new_class] + parents):\
+            # Conceptually equivalent to `if base is Model`.\
+            if not hasattr(base, '_meta'):\
+                continue\
+            # Skip concrete parent classes.\
+            if base != new_class and not base._meta.abstract:\
+                continue\
+            # Locate OneToOneField instances, prioritizing those with parent_link=True\
+            for field in base._meta.local_fields:' ./django/db/models/base.py"
+22,23,1,2381695642984119,2381695769186095,2,2,"sed -i '/for field in base._meta.local_fields:/,/# Locate OneToOneField instances./c\
+            for field in base._meta.local_fields:\
+                if isinstance(field, OneToOneField):\
+                    related = resolve_relation(new_class, field.remote_field.model)\
+                    model_tuple = make_model_tuple(related)\
+                    # If we haven't seen this model yet, or if this field has parent_link=True\
+                    # and the existing field doesn't, then use this field\
+                    if (model_tuple not in parent_links or\
+                            (field.remote_field.parent_link and\
+                             not parent_links[model_tuple].remote_field.parent_link)):\
+                        parent_links[model_tuple] = field' ./django/db/models/base.py"
+23,24,1,2381695772129934,2381695899232010,2,2,"cat ./django/db/models/base.py | sed '/# Collect the parent links for multi-table inheritance\./,/for base in new_class\.mro():/c\
+        # Collect the parent links for multi-table inheritance.\
+        parent_links = {}\
+        for base in reversed([new_class] + parents):\
+            # Conceptually equivalent to `if base is Model`.\
+            if not hasattr(base, '_meta'):\
+                continue\
+            # Skip concrete parent classes.\
+            if base != new_class and not base._meta.abstract:\
+                continue\
+            # Locate OneToOneField instances, prioritizing those with parent_link=True\
+            for field in base._meta.local_fields:\
+                if isinstance(field, OneToOneField):\
+                    related = resolve_relation(new_class, field.remote_field.model)\
+                    model_tuple = make_model_tuple(related)\
+                    # If we haven't seen this model yet, or if this field has parent_link=True\
+                    # and the existing field doesn't, then use this field\
+                    if (model_tuple not in parent_links or\
+                            (field.remote_field.parent_link and\
+                             not parent_links[model_tuple].remote_field.parent_link)):\
+                        parent_links[model_tuple] = field' > temp_base.py && mv temp_base.py ./django/db/models/base.py"
+24,25,1,2381695902161021,2381696023402861,2,2,"python3 -c ""
+import re
+
+def replace_parent_links_code(content):
+    # Pattern to match the original parent links collection code
+    pattern = re.compile(
+        r'(# Collect the parent links for multi-table inheritance\.\s*\\
+        parent_links = {}\\
+        for base in reversed\\(\\[new_class\\] \\+ parents\\):\\
+            # Conceptually equivalent to `if base is Model`\.\\
+            if not hasattr\\(base, '_meta'\\):\\
+                continue\\
+            # Skip concrete parent classes\.\\
+            if base != new_class and not base\\._meta\\.abstract:\\
+                continue\\
+            # Locate OneToOneField instances\.\\
+            for field in base\\._meta\\.local_fields:)\\
+            (if isinstance\\(field, OneToOneField\\):\\
+                related = resolve_relation\\(new_class, field\\.remote_field\\.model\\)\\
+                parent_links\\[make_model_tuple\\(related\\)\\] = field)'
+    )
+    
+    # Replacement code that prioritizes parent_link=True fields
+    replacement = r""""""# Collect the parent links for multi-table inheritance.\n        parent_links = {}\n        for base in reversed([new_class] + parents):\n            # Conceptually equivalent to `if base is Model`.\n            if not hasattr(base, '_meta'):\n                continue\n            # Skip concrete parent classes.\n            if base != new_class and not base._meta.abstract:\n                continue\n            # Locate OneToOneField instances, prioritizing those with parent_link=True\n            for field in base._meta.local_fields:\n                if isinstance(field, OneToOneField):\n                    related = resolve_relation(new_class, field.remote_field.model)\n                    model_tuple = make_model_tuple(related)\n                    # If we haven't seen this model yet, or if this field has parent_link=True\n                    # and the existing field doesn't, then use this field\n                    if (model_tuple not in parent_links or\n                            (field.remote_field.parent_link and\n                             not parent_links[model_tuple].remote_field.parent_link)):\n                        parent_links[model_tuple] = field""""""
+    
+    return pattern.sub(replacement, content)
+
+
+class_content = open('./django/db/models/base.py', 'r').read()
+modified_content = replace_parent_links_code(class_content)
+open('./django/db/models/base.py', 'w').write(modified_content)
+"""
+25,26,1,2381696026283040,2381696166724282,1,1,"python3 -c ""
+# Read the original file
+with open('./django/db/models/base.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the section to replace
+start_idx = None
+end_idx = None
+for i, line in enumerate(lines):
+    if '# Collect the parent links for multi-table inheritance.' in line:
+        start_idx = i
+    if start_idx is not None and 'for base in new_class.mro():' in line:
+        end_idx = i
+        break
+
+if start_idx is not None and end_idx is not None:
+    # Create the replacement lines
+    replacement = [
+        '        # Collect the parent links for multi-table inheritance.\n',
+        '        parent_links = {}\n',
+        '        for base in reversed([new_class] + parents):\n',
+        '            # Conceptually equivalent to `if base is Model`.\n',
+        '            if not hasattr(base, '_meta'):\n',
+        '                continue\n',
+        '            # Skip concrete parent classes.\n',
+        '            if base != new_class and not base._meta.abstract:\n',
+        '                continue\n',
+        '            # Locate OneToOneField instances, prioritizing those with parent_link=True\n',
+        '            for field in base._meta.local_fields:\n',
+        '                if isinstance(field, OneToOneField):\n',
+        '                    related = resolve_relation(new_class, field.remote_field.model)\n',
+        '                    model_tuple = make_model_tuple(related)\n',
+        '                    # If we haven't seen this model yet, or if this field has parent_link=True\n',
+        '                    # and the existing field doesn't, then use this field\n',
+        '                    if (model_tuple not in parent_links or\n',
+        '                            (field.remote_field.parent_link and\n',
+        '                             not parent_links[model_tuple].remote_field.parent_link)):\n',
+        '                        parent_links[model_tuple] = field\n'
+    ]
+    
+    # Replace the section
+    new_lines = lines[:start_idx] + replacement + lines[end_idx:]
+    
+    # Write the modified content back
+    with open('./django/db/models/base.py', 'w') as f:
+        f.writelines(new_lines)
+"""
+26,27,1,2381696169709488,2381696295344438,0,0,"cat > fix_parent_links.py << 'EOF'
+#!/usr/bin/env python3
+
+# Read the original file
+with open('./django/db/models/base.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the section to replace
+start_idx = None
+end_idx = None
+for i, line in enumerate(lines):
+    if '# Collect the parent links for multi-table inheritance.' in line:
+        start_idx = i
+    if start_idx is not None and 'for base in new_class.mro():' in line:
+        end_idx = i
+        break
+
+if start_idx is not None and end_idx is not None:
+    # Create the replacement lines
+    replacement = [
+        '        # Collect the parent links for multi-table inheritance.\n',
+        '        parent_links = {}\n',
+        '        for base in reversed([new_class] + parents):\n',
+        '            # Conceptually equivalent to `if base is Model`.\n',
+        '            if not hasattr(base, '_meta'):\n',
+        '                continue\n',
+        '            # Skip concrete parent classes.\n',
+        '            if base != new_class and not base._meta.abstract:\n',
+        '                continue\n',
+        '            # Locate OneToOneField instances, prioritizing those with parent_link=True\n',
+        '            for field in base._meta.local_fields:\n',
+        '                if isinstance(field, OneToOneField):\n',
+        '                    related = resolve_relation(new_class, field.remote_field.model)\n',
+        '                    model_tuple = make_model_tuple(related)\n',
+        '                    # If we haven't seen this model yet, or if this field has parent_link=True\n',
+        '                    # and the existing field doesn't, then use this field\n',
+        '                    if (model_tuple not in parent_links or\n',
+        '                            (field.remote_field.parent_link and\n',
+        '                             not parent_links[model_tuple].remote_field.parent_link)):\n',
+        '                        parent_links[model_tuple] = field\n'
+    ]
+    
+    # Replace the section
+    new_lines = lines[:start_idx] + replacement + lines[end_idx:]
+    
+    # Write the modified content back
+    with open('./django/db/models/base.py', 'w') as f:
+        f.writelines(new_lines)
+
+print(""Successfully updated base.py"")
+EOF"
+27,28,1,2381696298371102,2381696441215021,1,1,python3 fix_parent_links.py
+28,29,1,2381696444112132,2381696569764009,1,1,"sed -i '/# Collect the parent links for multi-table inheritance\./,/for base in new_class\.mro():/ { \
+    /# Collect the parent links for multi-table inheritance\./,/for field in base\._meta\._local_fields:/ { \
+        /# Collect the parent links for multi-table inheritance\./! { \
+            /for field in base\._meta\._local_fields:/!d \
+        } \
+    } \
+    /for field in base\._meta\._local_fields:/a \\
+                if isinstance(field, OneToOneField):\\n                    related = resolve_relation(new_class, field.remote_field.model)\\n                    model_tuple = make_model_tuple(related)\\n                    # If we haven't seen this model yet, or if this field has parent_link=True\\n                    # and the existing field doesn't, then use this field\\n                    if (model_tuple not in parent_links or\\n                            (field.remote_field.parent_link and\\n                             not parent_links[model_tuple].remote_field.parent_link)):\\n                        parent_links[model_tuple] = field\n}' ./django/db/models/base.py"
+29,30,1,2381696572658936,2381696696913894,0,0,cat > fix_parent_links.py
+30,31,1,2381696699830141,2381696826406198,2,2,"echo 'import re
+
+# Read the original file
+with open(""./django/db/models/base.py"", ""r"") as f:
+    content = f.read()
+
+# Define the pattern to match the original code
+pattern = re.compile(
+    r""(# Collect the parent links for multi-table inheritance\.\s*"" +
+    r""parent_links = \{\}\s*"" +
+    r""for base in reversed\\(\\[new_class\\] \\+ parents\\):\s*"" +
+    r""    # Conceptually equivalent to `if base is Model`\.\s*"" +
+    r""    if not hasattr\\(base, '_meta'\\):\s*"" +
+    r""        continue\s*"" +
+    r""    # Skip concrete parent classes\.\s*"" +
+    r""    if base != new_class and not base\\._meta\\.abstract:\s*"" +
+    r""        continue\s*"" +
+    r""    # Locate OneToOneField instances\.\s*"" +
+    r""    for field in base\\._meta\\.local_fields:)\s*"" +
+    r""    (if isinstance\\(field, OneToOneField\\):\s*"" +
+    r""        related = resolve_relation\\(new_class, field\\.remote_field\\.model\\)\s*"" +
+    r""        parent_links\\[make_model_tuple\\(related\\)\\] = field)""
+)
+
+# Define the replacement code
+replacement = r""""""# Collect the parent links for multi-table inheritance.\n        parent_links = {}\n        for base in reversed([new_class] + parents):\n            # Conceptually equivalent to `if base is Model`.\n            if not hasattr(base, '_meta'):\n                continue\n            # Skip concrete parent classes.\n            if base != new_class and not base._meta.abstract:\n                continue\n            # Locate OneToOneField instances, prioritizing those with parent_link=True\n            for field in base._meta.local_fields:\n                if isinstance(field, OneToOneField):\n                    related = resolve_relation(new_class, field.remote_field.model)\n                    model_tuple = make_model_tuple(related)\n                    # If we haven't seen this model yet, or if this field has parent_link=True\n                    # and the existing field doesn't, then use this field\n                    if (model_tuple not in parent_links or\n                            (field.remote_field.parent_link and\n                             not parent_links[model_tuple].remote_field.parent_link)):\n                        parent_links[model_tuple] = field""""""
+
+# Perform the replacement
+new_content = pattern.sub(replacement, content)
+
+# Write the modified content back
+with open(""./django/db/models/base.py"", ""w"") as f:
+    f.write(new_content)
+
+print(""Successfully updated base.py"")' > fix_parent_links.py"
+31,32,1,2381696829371096,2381696967427250,1,1,"python3 -c ""
+# Read the original file
+with open('./django/db/models/base.py', 'r') as f:
+    content = f.read()
+
+# Define the old and new code blocks
+old_code = '''        # Collect the parent links for multi-table inheritance.\n        parent_links = {}\n        for base in reversed([new_class] + parents):\n            # Conceptually equivalent to `if base is Model`.\n            if not hasattr(base, '_meta'):\n                continue\n            # Skip concrete parent classes.\n            if base != new_class and not base._meta.abstract:\n                continue\n            # Locate OneToOneField instances.\n            for field in base._meta.local_fields:\n                if isinstance(field, OneToOneField):\n                    related = resolve_relation(new_class, field.remote_field.model)\n                    parent_links[make_model_tuple(related)] = field'''
+
+new_code = '''        # Collect the parent links for multi-table inheritance.\n        parent_links = {}\n        for base in reversed([new_class] + parents):\n            # Conceptually equivalent to `if base is Model`.\n            if not hasattr(base, '_meta'):\n                continue\n            # Skip concrete parent classes.\n            if base != new_class and not base._meta.abstract:\n                continue\n            # Locate OneToOneField instances, prioritizing those with parent_link=True\n            for field in base._meta.local_fields:\n                if isinstance(field, OneToOneField):\n                    related = resolve_relation(new_class, field.remote_field.model)\n                    model_tuple = make_model_tuple(related)\n                    # If we haven't seen this model yet, or if this field has parent_link=True\n                    # and the existing field doesn't, then use this field\n                    if (model_tuple not in parent_links or\n                            (field.remote_field.parent_link and\n                             not parent_links[model_tuple].remote_field.parent_link)):\n                        parent_links[model_tuple] = field'''
+
+# Perform the replacement
+if old_code in content:
+    new_content = content.replace(old_code, new_code)
+    with open('./django/db/models/base.py', 'w') as f:
+        f.write(new_content)
+    print(""Successfully updated base.py"")
+else:
+    print(""Could not find the code to replace"")
+"""
+32,33,1,2381696970352144,2381697097263903,0,0,"cp ./django/db/models/base.py ./django/db/models/base.py.bak && grep -n ""# Collect the parent links"" ./django/db/models/base.py"
+33,34,1,2381697100305645,2381697230921436,0,0,"cat > create_modified_section.py << 'EOF'
+#!/usr/bin/env python3
+
+# Create the modified section
+modified_section = '''        # Collect the parent links for multi-table inheritance.\n        parent_links = {}\n        for base in reversed([new_class] + parents):\n            # Conceptually equivalent to `if base is Model`.\n            if not hasattr(base, '_meta'):\n                continue\n            # Skip concrete parent classes.\n            if base != new_class and not base._meta.abstract:\n                continue\n            # Locate OneToOneField instances, prioritizing those with parent_link=True\n            for field in base._meta.local_fields:\n                if isinstance(field, OneToOneField):\n                    related = resolve_relation(new_class, field.remote_field.model)\n                    model_tuple = make_model_tuple(related)\n                    # If we haven't seen this model yet, or if this field has parent_link=True\n                    # and the existing field doesn't, then use this field\n                    if (model_tuple not in parent_links or\n                            (field.remote_field.parent_link and\n                             not parent_links[model_tuple].remote_field.parent_link)):\n                        parent_links[model_tuple] = field'''
+
+with open('modified_section.txt', 'w') as f:
+    f.write(modified_section)
+
+print(""Created modified section"")
+EOF"
+34,35,1,2381697233799893,2381697380825501,0,0,"python3 create_modified_section.py && sed -i '194,202d' ./django/db/models/base.py && sed -i '194r modified_section.txt' ./django/db/models/base.py"
+35,36,1,2381697383749702,2381697738150753,1,1,python3 reproduce_issue.py
+36,37,1,2381697741192755,2381697866235337,0,0,"cat > fix_indentation.py << 'EOF'
+#!/usr/bin/env python3
+
+# Read the original file
+with open('./django/db/models/base.py', 'r') as f:
+    lines = f.readlines()
+
+# Find the line with the syntax error
+for i, line in enumerate(lines):
+    if 'parent_links[model_tuple] = field        parent_links = {}' in line:
+        # Fix the line
+        lines[i] = '                    parent_links[model_tuple] = field\n'
+        break
+
+# Write the fixed content back
+with open('./django/db/models/base.py', 'w') as f:
+    f.writelines(lines)
+
+print(""Fixed indentation issue"")
+EOF"
+37,38,1,2381697869243346,2381698212341354,1,1,python3 fix_indentation.py && python3 reproduce_issue.py

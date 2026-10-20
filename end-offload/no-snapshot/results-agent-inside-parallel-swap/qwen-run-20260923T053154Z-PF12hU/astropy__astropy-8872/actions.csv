@@ -1,0 +1,57 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2398380612319887,2398380848444823,0,0,ls -R
+1,2,1,2398380854473946,2398380973891274,0,0,ls -la astropy/units/
+2,3,1,2398380976820906,2398381096651683,0,0,"grep -n ""dtype"" astropy/units/quantity.py | head -20"
+3,4,1,2398381099503711,2398381225265667,1,1,"grep -r ""float16"" astropy/units/"
+4,5,1,2398381227553438,2398381344811711,0,0,"grep -n ""dtype"" astropy/units/core.py | head -20"
+5,6,1,2398381347610528,2398381963470496,0,0,"echo ""import numpy as np
+import astropy.units as u
+
+# Test different float types
+print('float16:', (np.float16(1) * u.km).dtype)
+print('float32:', (np.float32(1) * u.km).dtype)
+print('float64:', (np.float64(1) * u.km).dtype)
+print('float128:', (np.float128(1) * u.km).dtype)
+
+# Test with Quantity constructor directly
+print('\nUsing Quantity constructor:')
+from astropy.units import Quantity
+print('float16:', Quantity(np.float16(1), u.km).dtype)
+print('float32:', Quantity(np.float32(1), u.km).dtype)
+print('float64:', Quantity(np.float64(1), u.km).dtype)
+print('float128:', Quantity(np.float128(1), u.km).dtype)"" > reproduce_issue.py && python reproduce_issue.py"
+6,7,1,2398381966277729,2398382084259886,0,0,"sed -n '270,320p' astropy/units/quantity.py"
+7,8,1,2398382088428627,2398382206547218,0,0,"sed -n '360,400p' astropy/units/quantity.py"
+8,9,1,2398382209424693,2398382455794468,0,0,"python -c ""import numpy as np; print('Can cast float16 to float32:', np.can_cast(np.float16, np.float32)); print('Can cast float32 to float16:', np.can_cast(np.float32, np.float16))"""
+9,10,1,2398382458694945,2398382578988718,0,0,"cp astropy/units/quantity.py astropy/units/quantity.py.bak && sed -i '380,381c\        # by default, cast any integer, boolean, etc., to float\n        if dtype is None and (not (np.can_cast(value.dtype, np.float32) or value.dtype.fields) or value.dtype.kind == '\''O'\''):\n            value = value.astype(float)' astropy/units/quantity.py"
+10,11,1,2398382581536395,2398382915096594,1,1,python reproduce_issue.py
+11,12,1,2398382917841541,2398383254032072,1,1,"sed -i '380,381c\        # by default, cast any integer, boolean, etc., to float\n        if dtype is None and (not (np.can_cast(value.dtype, np.float32) or value.dtype.fields) or value.dtype.kind == ""O""):\n            value = value.astype(float)' astropy/units/quantity.py && python reproduce_issue.py"
+12,13,1,2398383256923353,2398383375165765,0,0,"grep -n ""# by default"" -A3 astropy/units/quantity.py"
+13,14,1,2398383377976806,2398383717334564,1,1,"sed -i '379,382d' astropy/units/quantity.py && sed -i '379i\        # by default, cast any integer, boolean, etc., to float\n        if dtype is None and (not (np.can_cast(value.dtype, np.float32) or value.dtype.fields) or value.dtype.kind == ""O""):\n            value = value.astype(float)' astropy/units/quantity.py && python reproduce_issue.py"
+14,15,1,2398383719649045,2398383836860840,0,0,"sed -n '375,385p' astropy/units/quantity.py"
+15,16,1,2398383839634630,2398384249726527,0,0,"sed -i '379,383c\        # by default, cast any integer, boolean, etc., to float\n        if dtype is None and (not (np.can_cast(value.dtype, np.float32) or value.dtype.fields) or value.dtype.kind == ""O""):\n            value = value.astype(float)' astropy/units/quantity.py && python reproduce_issue.py"
+16,17,1,2398384252047490,2398384654003140,0,0,"echo ""import numpy as np
+import astropy.units as u
+
+# Test creation with different float types
+print('Creation tests:')
+for dtype in [np.float16, np.float32, np.float64]:
+    val = dtype(1.0)
+    q = val * u.m
+    print(f'{dtype.__name__}: {q.dtype}')
+
+# Test with Quantity constructor
+print('\nConstructor tests:')
+for dtype in [np.float16, np.float32, np.float64]:
+    val = dtype(1.0)
+    q = u.Quantity(val, u.m)
+    print(f'{dtype.__name__}: {q.dtype}')
+
+# Test arithmetic operations
+print('\nArithmetic tests:')
+q16 = np.float16(1.0) * u.m
+q32 = np.float32(2.0) * u.m
+result = q16 + q32
+print(f'float16 + float32 = {result.dtype}')"" > comprehensive_test.py && python comprehensive_test.py"
+17,18,1,2398384656945937,2398384782871032,0,0,git diff -- astropy/units/quantity.py > patch.txt && cat patch.txt
+18,19,1,2398384785940025,2398384903000387,,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

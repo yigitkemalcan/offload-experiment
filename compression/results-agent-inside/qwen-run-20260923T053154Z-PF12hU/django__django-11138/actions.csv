@@ -1,0 +1,35 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2378433674160835,2378434343217097,0,0,"find . -type f -name ""operations.py"" | grep -i mysql"
+1,2,1,2378434349405654,2378434478336359,0,0,"cat ./django/db/backends/mysql/operations.py | grep -n ""UTC"" -A 5 -B 5"
+2,3,1,2378434481499198,2378434602248038,1,1,"cat ./django/db/backends/mysql/operations.py | grep -n ""TIME_ZONE"" -A 10 -B 10"
+3,4,1,2378434604572649,2378434723803136,0,0,cat ./django/db/backends/mysql/operations.py
+4,5,1,2378434727084457,2378434960844415,0,0,"find . -type f -name ""base.py"" | grep -i db"
+5,6,1,2378434963954796,2378435084688797,1,1,"cat ./django/db/backends/mysql/base.py | grep -A 10 -B 10 ""timezone"""
+6,7,1,2378435089492447,2378435208070935,0,0,cat ./django/db/backends/mysql/base.py
+7,8,1,2378435211437676,2378435331190302,1,1,"grep -n ""timezone"" ./django/db/backends/mysql/base.py"
+8,9,1,2378435333543936,2378435453345262,0,0,"cat ./django/db/backends/base/base.py | grep -A 10 -B 10 ""timezone"""
+9,10,1,2378435456588803,2378435577010063,0,0,"grep -r ""timezone"" ./django/db/backends/mysql/ --include=""*.py"" | grep -v ""base.py"""
+10,11,1,2378435580378396,2378435699878354,0,0,cat ./django/db/backends/mysql/features.py
+11,12,1,2378435703280912,2378435826822007,0,0,"cp ./django/db/backends/mysql/operations.py ./django/db/backends/mysql/operations.py.bak && sed -i 's/field_name = ""CONVERT_TZ(%s, \""UTC\"", \""%s\"")"" % (field_name, tzname)/field_name = ""CONVERT_TZ(%s, \""%s\"", \""%s\"")"" % (field_name, self.connection.timezone_name, tzname)/' ./django/db/backends/mysql/operations.py"
+12,13,1,2378435829177886,2378435948660405,0,0,diff ./django/db/backends/mysql/operations.py.bak ./django/db/backends/mysql/operations.py
+13,14,1,2378435950967413,2378436069900815,0,0,"grep -A 5 -B 5 ""_convert_field_to_tz"" ./django/db/backends/mysql/operations.py"
+14,15,1,2378436073245685,2378436191466062,0,0,"cat > ./django/db/backends/mysql/operations.py.patch << 'EOL'
+diff --git a/django/db/backends/mysql/operations.py b/django/db/backends/mysql/operations.py
+index 1234567..89abcde 100644
+--- a/django/db/backends/mysql/operations.py
++++ b/django/db/backends/mysql/operations.py
+@@ -70,7 +70,7 @@ class DatabaseOperations(BaseDatabaseOperations):
+ 
+     def _convert_field_to_tz(self, field_name, tzname):
+         if settings.USE_TZ:
+-            field_name = ""CONVERT_TZ(%s, 'UTC', '%s')"" % (field_name, tzname)
++            field_name = ""CONVERT_TZ(%s, '%s', '%s')"" % (field_name, self.connection.timezone_name, tzname)
+         return field_name
+ 
+     def datetime_cast_date_sql(self, field_name, tzname):
+EOL"
+15,16,1,2378436193795852,2378436312393565,0,0,"sed -i ""s/field_name = \""CONVERT_TZ(%s, 'UTC', '%s')\"" % (field_name, tzname)/field_name = \""CONVERT_TZ(%s, '%s', '%s')\"" % (field_name, self.connection.timezone_name, tzname)/"" ./django/db/backends/mysql/operations.py"
+16,17,1,2378436314693439,2378436433589662,0,0,"grep -A 2 ""_convert_field_to_tz"" ./django/db/backends/mysql/operations.py"
+17,18,1,2378436437032725,2378436573546859,0,0,git diff -- django/db/backends/mysql/operations.py > patch.txt
+18,19,1,2378436575849278,2378436693797326,0,0,cat patch.txt
+19,20,1,2378436697150732,2378436816242400,,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

@@ -1,0 +1,31 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2397630231510608,2397630902910335,0,0,"find . -type f -name ""*.py"" | grep -v ""__pycache__"" | grep -v ""\.pyc$"""
+1,2,1,2397630909049865,2397631464599006,0,0,"find . -type f -name ""*.py"" | xargs grep -l ""formfield_for_manytomany"""
+2,3,1,2397631467377456,2397631757905378,0,0,"find . -type f -name ""*.py"" | xargs grep -l ""formfield_for_foreignkey"""
+3,4,1,2397631760708544,2397631876686508,0,0,"grep -A 20 ""formfield_for_foreignkey"" django/contrib/admin/options.py"
+4,5,1,2397631879463405,2397631995262896,0,0,"grep -A 20 ""formfield_for_manytomany"" django/contrib/admin/options.py"
+5,6,1,2397631998000309,2397632114276331,0,0,"grep -A 40 ""formfield_for_manytomany"" django/contrib/admin/options.py | tail -n 30"
+6,7,1,2397632116791949,2397632239842323,0,0,"cp django/contrib/admin/options.py django/contrib/admin/options.py.bak && sed -i '/if db_field.name in autocomplete_fields:/i \\    if \""widget\"" not in kwargs:' django/contrib/admin/options.py && grep -B5 -A20 ""if db_field.name in autocomplete_fields:"" django/contrib/admin/options.py"
+7,8,1,2397632243772929,2397632365379437,0,0,"cp django/contrib/admin/options.py.bak django/contrib/admin/options.py && sed -i 's/    if ""widget"" not in kwargs:/    if ""widget"" not in kwargs:/; s/\(    \)\{4\}if db_field.name in autocomplete_fields:/        if db_field.name in autocomplete_fields:/' django/contrib/admin/options.py && grep -B5 -A20 ""if db_field.name in autocomplete_fields:"" django/contrib/admin/options.py"
+8,9,1,2397632368165752,2397632483839271,0,0,"grep -n "".*formfield_for_manytomany"" -A 40 django/contrib/admin/options.py | grep -v ""^--$"""
+9,11,1,2397632486509950,2397632604400083,0,0,diff -u django/contrib/admin/options.py.bak django/contrib/admin/options.py > patch.txt && cat patch.txt
+10,14,1,2397632606877739,2397632748690862,0,0,"cp django/contrib/admin/options.py django/contrib/admin/options.py.bak && sed -i '252i\        if ""widget"" not in kwargs:' django/contrib/admin/options.py && sed -i '253,261s/^/        /' django/contrib/admin/options.py && git diff django/contrib/admin/options.py > patch.txt && cat patch.txt"
+11,15,1,2397632751530867,2397632882953620,0,0,"cp django/contrib/admin/options.py.bak django/contrib/admin/options.py && sed -i '252i\        if ""widget"" not in kwargs:' django/contrib/admin/options.py && sed -i '253s/^/        /; 254s/^/            /; 255s/^/            /; 256s/^/            /; 257s/^/            /; 258s/^/            /; 259s/^/            /; 260s/^/            /; 261s/^/            /' django/contrib/admin/options.py && git diff django/contrib/admin/options.py > patch.txt && cat patch.txt"
+12,16,1,2397632885708075,2397633017601084,0,0,"cp django/contrib/admin/options.py.bak django/contrib/admin/options.py && cat > temp_patch.py << 'EOL'
+        if ""widget"" not in kwargs:
+            autocomplete_fields = self.get_autocomplete_fields(request)
+            if db_field.name in autocomplete_fields:
+                kwargs['widget'] = AutocompleteSelectMultiple(db_field.remote_field, self.admin_site, using=db)
+            elif db_field.name in self.raw_id_fields:
+                kwargs['widget'] = widgets.ManyToManyRawIdWidget(db_field.remote_field, self.admin_site, using=db)
+            elif db_field.name in [*self.filter_vertical, *self.filter_horizontal]:
+                kwargs['widget'] = widgets.FilteredSelectMultiple(
+                    db_field.verbose_name,
+                    db_field.name in self.filter_vertical
+                )
+EOL
+
+# Replace the lines in the file
+sed -i '252,261d' django/contrib/admin/options.py && sed -i '252r temp_patch.py' django/contrib/admin/options.py && git diff django/contrib/admin/options.py > patch.txt && cat patch.txt"
+13,17,1,2397633020432453,2397633135595562,0,0,cat patch.txt
+14,18,1,2397633138397886,2397633254617163,,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

@@ -45,6 +45,10 @@ def end_record(run: str, t: dict) -> dict:
                                  snapshot_read_mib=mib(t["promote_snapshot_bytes_read"]))
         if "snapshot_pages_resident_before_promote" in t:
             record["promote"]["snapshot_pages_cached_before"] = t["snapshot_pages_resident_before_promote"]
+    if t.get("agent_inside"):  # replay_end.py --agent-inside: the agent survived and replayed the original run
+        end.update(agent_inside=True, faithful=t.get("faithful"), container_exit_code=t.get("container_exit_code"))
+    if t.get("demote_mode"):  # --parallel-swap
+        end.update(demote_mode=t["demote_mode"], promote_mode=t.get("promote_mode"), threads=t.get("promote_threads"))
     return {"run": run, "task_id": t["task_id"], "end": end,
             **{k: v for k, v in record.items() if k not in ("run", "task_id")}}
 
@@ -70,10 +74,15 @@ def main():
     for record in tasks:
         for name, value in numeric_leaves({k: v for k, v in record.items() if k not in ("run", "task_id")}):
             columns.setdefault(name, []).append(value)
+    inside = [r for r in tasks if r["end"].get("agent_inside")]
     checks = {
         "hit_step_limit": sum(r["end"]["hit_step_limit"] for r in tasks),
         "all_actions_returncode_ok": sum(r["end"]["returncode_mismatches"] == 0 for r in tasks),
-        "only_sleep_alive": sum(r["end"]["processes_alive"] == 1 for r in tasks),
+        "only_sleep_alive": sum(r["end"]["processes_alive"] == 1 for r in tasks if not r["end"].get("agent_inside")),
+        # --agent-inside: docker's init and the agent, which must survive (exit 0) and replay the original run
+        "only_agent_alive": sum(r["end"]["processes_alive"] == 2 for r in inside),
+        "agent_exit_code_0": sum(r["end"]["container_exit_code"] == 0 for r in inside),
+        "faithful": sum(bool(r["end"]["faithful"]) for r in inside),
         "process_memory_fully_back": sum(r["recovery"]["process_memory_fully_back"] for r in tasks),
         "swap_empty_after_promote": sum(r["recovery"]["swap_empty_after_promote"] for r in tasks),
         "promote_read_errors": sum(r["promote"]["read_errors"] > 0 for r in tasks),

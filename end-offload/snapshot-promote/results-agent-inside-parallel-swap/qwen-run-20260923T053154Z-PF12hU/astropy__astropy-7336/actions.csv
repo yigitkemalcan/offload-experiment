@@ -1,0 +1,62 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2396156780788031,2396156971286456,0,0,"echo ""import astropy.units as u\n\nclass PoC(object):\n\n    @u.quantity_input\n    def __init__(self, voltage: u.V) -> None:\n        pass\n\n\nif __name__ == '__main__':\n    poc = PoC(1.*u.V)"" > poc.py"
+1,1,2,2396156971293620,2396157150762167,0,0,"find /testbed -type f -name ""*.py"" | grep -i ""decorators\|quantity"""
+2,2,1,2396157159077314,2396157278408975,0,0,"grep -n ""quantity_input"" /testbed/astropy/units/decorators.py"
+3,3,1,2396157281266262,2396157399343004,0,0,"cat /testbed/astropy/units/decorators.py | grep -A 50 ""class QuantityInput"""
+4,4,1,2396157401859032,2396157519248308,0,0,"cat /testbed/astropy/units/decorators.py | grep -A 100 ""def wrapper"""
+5,5,1,2396157521589420,2396157662081661,1,1,python3 poc.py
+6,6,1,2396157666030491,2396157781356436,0,0,"echo 'import astropy.units as u\n\nclass PoC(object):\n\n    @u.quantity_input\n    def __init__(self, voltage: u.V) -> None:\n        pass\n\n\nif __name__ == ""__main__"":\n    poc = PoC(1.*u.V)' > poc.py"
+7,7,1,2396157783667070,2396157913260906,1,1,python3 poc.py
+8,8,1,2396157915963012,2396158033783235,0,0,"cat > poc.py << 'EOL'
+import astropy.units as u
+
+class PoC(object):
+
+    @u.quantity_input
+    def __init__(self, voltage: u.V) -> None:
+        pass
+
+
+if __name__ == ""__main__"":
+    poc = PoC(1.*u.V)
+EOL"
+9,9,1,2396158036091465,2396158682273293,1,1,python3 poc.py
+10,10,1,2396158685242861,2396158808287450,0,0,"cp /testbed/astropy/units/decorators.py /testbed/astropy/units/decorators.py.bak && sed -i '/if wrapped_signature.return_annotation is not inspect.Signature.empty:/,/^            else:/c\            if wrapped_signature.return_annotation is not inspect.Signature.empty and return_ is not None:\n                return return_.to(wrapped_signature.return_annotation)\n            else:\n                return return_' /testbed/astropy/units/decorators.py"
+11,11,1,2396158810608915,2396159342097408,0,0,python3 poc.py
+12,12,1,2396159344401379,2396159462044480,0,0,"cat > comprehensive_test.py << 'EOL'
+import astropy.units as u
+
+class TestClass:
+    
+    @u.quantity_input
+    def __init__(self, voltage: u.V) -> None:
+        self.voltage = voltage
+        
+    @u.quantity_input
+    def get_voltage_squared(self, voltage: u.V) -> u.V**2:
+        return voltage**2
+        
+    @u.quantity_input
+    def get_none(self, voltage: u.V) -> None:
+        pass
+        
+# Test 1: Constructor with None return type
+obj = TestClass(5 * u.V)
+print(f""Test 1 passed: {obj.voltage}"")
+
+# Test 2: Method with unit return type
+result = obj.get_voltage_squared(3 * u.V)
+print(f""Test 2 passed: {result}"")
+
+# Test 3: Method with None return type
+obj.get_none(2 * u.V)
+print(""Test 3 passed"")
+EOL"
+13,13,1,2396159464886810,2396159994505088,0,0,python3 comprehensive_test.py
+14,14,1,2396159997470978,2396160121146448,0,0,git diff -- astropy/units/decorators.py > patch.txt
+15,15,1,2396160123453706,2396160241781232,0,0,cat patch.txt
+16,16,1,2396160244724841,2396160370737215,0,0,"cp /testbed/astropy/units/decorators.py.bak /testbed/astropy/units/decorators.py && sed -i '/if wrapped_signature.return_annotation is not inspect.Signature.empty:/,/^            else:/c\            if wrapped_signature.return_annotation is not inspect.Signature.empty and return_ is not None:\n                return return_.to(wrapped_signature.return_annotation)\n            else:\n                return return_' /testbed/astropy/units/decorators.py && git diff -- astropy/units/decorators.py > patch.txt"
+17,17,1,2396160373717262,2396160491532154,0,0,cat patch.txt
+18,18,1,2396160494379382,2396160623380168,0,0,"cp /testbed/astropy/units/decorators.py.bak /testbed/astropy/units/decorators.py && sed -i '/if wrapped_signature.return_annotation is not inspect.Signature.empty:/,/^            else:/c\            if wrapped_signature.return_annotation is not inspect.Signature.empty and return_ is not None:\n                return return_.to(wrapped_signature.return_annotation)\n            else:\n                return return_' /testbed/astropy/units/decorators.py && git diff -- astropy/units/decorators.py > temp_patch.txt && cat temp_patch.txt | grep -v ""+                return return_"" > patch.txt && rm temp_patch.txt"
+19,19,1,2396160625705270,2396160744283710,0,0,cat patch.txt
+20,20,1,2396160747198606,2396160864725950,,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

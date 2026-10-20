@@ -1,0 +1,114 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2399709821217770,2399710605856964,0,0,"find . -type f -name ""*.py"" | grep -v ""test"" | xargs grep -l ""SECURE_REFERRER_POLICY"""
+1,2,1,2399710612094638,2399710729803065,0,0,"grep -A 5 -B 5 ""SECURE_REFERRER_POLICY"" django/conf/global_settings.py"
+2,3,1,2399710732687673,2399710850116817,0,0,"cat django/middleware/security.py | grep -A 10 -B 10 ""SECURE_REFERRER_POLICY"""
+3,4,1,2399710852824053,2399710970027665,0,0,"cat django/core/checks/security/base.py | grep -A 15 -B 5 ""SECURE_REFERRER_POLICY"""
+4,5,1,2399710972832975,2399711438717110,0,0,"find . -type f -name ""*.py"" | xargs grep -l ""REFERRER_POLICY_VALUES"""
+5,6,1,2399711441526096,2399712324446634,1,1,"grep -r ""REFERRER_POLICY_VALUES"" . | grep -v ""base.py"""
+6,7,1,2399712328032805,2399712444143543,0,0,"cat django/middleware/security.py | grep -A 20 ""process_response"" -B 10"
+7,8,1,2399712446681052,2399712563734559,0,0,"cat django/middleware/security.py | grep -A 30 ""response.setdefault('Referrer-Policy'"""
+8,9,1,2399712566493222,2399712835887172,0,0,"find . -type f -name ""*.py"" | grep -i test | xargs grep -l ""SECURE_REFERRER_POLICY"""
+9,10,1,2399712838380428,2399712955455491,0,0,"cat tests/middleware/test_security.py | grep -A 20 -B 20 ""SECURE_REFERRER_POLICY"""
+10,11,1,2399712957825526,2399713074443163,0,0,"cat tests/check_framework/test_security.py | grep -A 20 -B 20 ""SECURE_REFERRER_POLICY"""
+11,12,1,2399713077268180,2399713195938248,0,0,"sed -i 's/SECURE_REFERRER_POLICY = None/SECURE_REFERRER_POLICY = ""same-origin""/' django/conf/global_settings.py"
+12,13,1,2399713198337498,2399713315137757,0,0,"grep ""SECURE_REFERRER_POLICY"" django/conf/global_settings.py"
+13,14,1,2399713317909183,2399713431326942,0,0,"echo 'from django.conf import settings\nfrom django.http import HttpResponse\nfrom django.middleware.security import SecurityMiddleware\n\n# Create a simple response\nresponse = HttpResponse(""Hello, world!"")\n\n# Create middleware instance\nmw = SecurityMiddleware(None)\n\n# Process the response\nprocessed_response = mw.process_response(None, response)\n\n# Print the Referrer-Policy header\nprint(f""Referrer-Policy header: {processed_response.get('Referrer-Policy')}"")' > test_referrer.py"
+14,15,1,2399713433631164,2399713572105102,1,1,python test_referrer.py
+15,16,1,2399713574895394,2399713690302385,0,0,"cat > test_referrer.py << 'EOL'
+from django.conf import settings
+from django.http import HttpResponse
+from django.middleware.security import SecurityMiddleware
+
+# Create a simple response
+response = HttpResponse(""Hello, world!"")
+
+# Create middleware instance
+mw = SecurityMiddleware(None)
+
+# Process the response
+processed_response = mw.process_response(None, response)
+
+# Print the Referrer-Policy header
+print(f""Referrer-Policy header: {processed_response.get('Referrer-Policy')}"")
+EOL"
+16,17,1,2399713692626935,2399714240939220,1,1,python test_referrer.py
+17,18,1,2399714243869243,2399714360854989,0,0,"cat > test_referrer.py << 'EOL'
+import os
+import django
+from django.conf import settings
+from django.http import HttpResponse
+from django.middleware.security import SecurityMiddleware
+
+# Configure Django settings
+if not settings.configured:
+    settings.configure(
+        MIDDLEWARE=[
+            'django.middleware.security.SecurityMiddleware',
+        ],
+        SECURE_REFERRER_POLICY=None,  # Let it use the default from global_settings
+    )
+    django.setup()
+
+# Create a simple response
+response = HttpResponse(""Hello, world!"")
+
+# Create middleware instance
+mw = SecurityMiddleware(None)
+
+# Process the response
+processed_response = mw.process_response(None, response)
+
+# Print the Referrer-Policy header
+print(f""Referrer-Policy header: {processed_response.get('Referrer-Policy')}"")
+EOL"
+18,19,1,2399714363173077,2399714774690506,0,0,python test_referrer.py
+19,20,1,2399714777371102,2399714895086924,0,0,"cat > test_referrer.py << 'EOL'
+import os
+import django
+from django.conf import settings
+from django.conf.global_settings import *  # Import all global defaults
+
+# Print the SECURE_REFERRER_POLICY default value
+print(f""SECURE_REFERRER_POLICY default: {SECURE_REFERRER_POLICY}"")
+EOL"
+20,21,1,2399714897785093,2399715081131320,0,0,python test_referrer.py
+21,22,1,2399715083956978,2399715199824992,0,0,"cat > test_referrer.py << 'EOL'
+import django
+from django.conf import settings
+from django.http import HttpResponse
+from django.middleware.security import SecurityMiddleware
+
+# Import global settings to verify the default
+from django.conf.global_settings import SECURE_REFERRER_POLICY
+print(f""Global default SECURE_REFERRER_POLICY: {SECURE_REFERRER_POLICY}"")
+
+# Configure Django settings using global defaults
+if not settings.configured:
+    # We need to set at least the required settings
+    settings.configure(
+        MIDDLEWARE=[
+            'django.middleware.security.SecurityMiddleware',
+        ],
+        # Don't set SECURE_REFERRER_POLICY explicitly - let it use the global default
+    )
+    django.setup()
+
+# Verify the setting value
+print(f""Settings SECURE_REFERRER_POLICY: {settings.SECURE_REFERRER_POLICY}"")
+
+# Create a simple response
+response = HttpResponse(""Hello, world!"")
+
+# Create middleware instance
+mw = SecurityMiddleware(None)
+
+# Process the response
+processed_response = mw.process_response(None, response)
+
+# Print the Referrer-Policy header
+print(f""Referrer-Policy header: {processed_response.get('Referrer-Policy')}"")
+EOL"
+22,23,1,2399715202168347,2399715562499010,0,0,python test_referrer.py
+23,24,1,2399715565306394,2399715687953805,0,0,git diff -- django/conf/global_settings.py > patch.txt
+24,25,1,2399715690271252,2399715807272712,0,0,cat patch.txt
+25,28,1,2399715810271915,2399715926794715,,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

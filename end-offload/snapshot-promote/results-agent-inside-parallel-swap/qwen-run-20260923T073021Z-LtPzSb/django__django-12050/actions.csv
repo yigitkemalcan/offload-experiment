@@ -1,0 +1,76 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2397275177006570,2397276163537217,0,0,"find . -type f -name ""*.py"" | xargs grep -l ""resolve_lookup_value"""
+1,2,1,2397276169871726,2397276287775044,0,0,"grep -A 20 ""def resolve_lookup_value"" django/db/models/sql/query.py"
+2,3,1,2397276290616160,2397276407372139,0,0,"grep -A 30 ""elif isinstance(value, (list, tuple)):"" django/db/models/sql/query.py"
+3,4,1,2397276410469495,2397276529494651,0,0,"cat > reproduce_issue.py << 'EOL'
+from django.db.models.sql.query import Query
+
+class MockCompiler:
+    def __init__(self):
+        self.query = Query(None)
+        
+# Create a test case to demonstrate the issue
+def test_list_coercion():
+    compiler = MockCompiler()
+    query = compiler.query
+    
+    # Test with a list input
+    input_list = [1, 2, 3]
+    result = query.resolve_lookup_value(input_list, can_reuse=None, allow_joins=True, simple_col=False)
+    
+    print(f""Input type: {type(input_list)}"")
+    print(f""Result type: {type(result)}"")
+    print(f""Types match: {type(input_list) == type(result)}"")
+    
+    # Test with a tuple input
+    input_tuple = (1, 2, 3)
+    result_tuple = query.resolve_lookup_value(input_tuple, can_reuse=None, allow_joins=True, simple_col=False)
+    
+    print(f""\nInput tuple type: {type(input_tuple)}"")
+    print(f""Result tuple type: {type(result_tuple)}"")
+    print(f""Tuple types match: {type(input_tuple) == type(result_tuple)}"")
+
+test_list_coercion()
+EOL"
+4,5,1,2397276531993959,2397277052632273,0,0,python reproduce_issue.py
+5,7,1,2397277055515198,2397277173325269,0,0,"sed -i '/elif isinstance(value, (list, tuple)):/{
+    N;N;N;N;N;N;N;N;N;N;N;N;N;N;N;N;N;N;
+    s/value = tuple(resolved_values)/if isinstance(value, list):\
+                value = resolved_values\
+            else:\
+                value = tuple(resolved_values)/
+}' django/db/models/sql/query.py"
+6,8,1,2397277175606328,2397277292173513,0,0,"cat > reproduce_issue.py << 'EOL'
+from django.db.models.sql.query import Query
+
+class MockCompiler:
+    def __init__(self):
+        self.query = Query(None)
+        
+# Create a test case to demonstrate the fix
+def test_list_coercion():
+    compiler = MockCompiler()
+    query = compiler.query
+    
+    # Test with a list input
+    input_list = [1, 2, 3]
+    result = query.resolve_lookup_value(input_list, can_reuse=None, allow_joins=True, simple_col=False)
+    
+    print(f""Input type: {type(input_list)}"")
+    print(f""Result type: {type(result)}"")
+    print(f""Types match: {type(input_list) == type(result)}"")
+    
+    # Test with a tuple input
+    input_tuple = (1, 2, 3)
+    result_tuple = query.resolve_lookup_value(input_tuple, can_reuse=None, allow_joins=True, simple_col=False)
+    
+    print(f""\nInput tuple type: {type(input_tuple)}"")
+    print(f""Result tuple type: {type(result_tuple)}"")
+    print(f""Tuple types match: {type(input_tuple) == type(result_tuple)}"")
+
+test_list_coercion()
+EOL"
+7,9,1,2397277294440906,2397277604984480,0,0,python reproduce_issue.py
+8,10,1,2397277607576561,2397277739419002,0,0,git diff -- django/db/models/sql/query.py > patch.txt
+9,11,1,2397277743014341,2397277859390683,0,0,cat patch.txt
+10,13,1,2397277862307131,2397277978511027,,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

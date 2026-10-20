@@ -9,7 +9,8 @@ Default panels: (a) snapshot-promote/ (demote writes the cache snapshot, promote
 (b) no-snapshot/ (no snapshot; promote re-reads the container's files). x is the container's memory at the
 freeze (memory_at_freeze_mib.total), the same in every experiment. Each line is a constant-throughput fit,
 time = size / throughput; the throughput in the legend is the geometric mean of the per-task throughputs
-(the least-squares fit of a slope-1 line in log-log). Writes plots/snapshot_scaling.png.
+(the least-squares fit of a slope-1 line in log-log), followed by the mean time over the tasks.
+Writes plots/snapshot_scaling.png.
 """
 
 import argparse
@@ -21,13 +22,21 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.ticker import FuncFormatter, LogLocator
+from matplotlib.ticker import FuncFormatter, LogFormatterSciNotation, LogLocator
 
 ROOT = Path(__file__).resolve().parent
 # same colors as offload_times.png / offload_cdf.png
 BLUE, ORANGE = "#0072B2", "#D55E00"
 DEFAULT_PANELS = [f"with snapshot={ROOT / 'snapshot-promote/results/summary.json'}",
                   f"without snapshot={ROOT / 'no-snapshot/results/summary.json'}"]
+
+
+class MinorLabels(LogFormatterSciNotation):
+    """The minor ticks matplotlib labels (some, when the axis spans few decades), written as the major ones:
+    0.6, not 6 x 10^-1."""
+
+    def __call__(self, x, pos=None):
+        return f"{x:,.3g}" if super().__call__(x, pos) else ""
 
 
 def fit_throughput(size_mib, time_s):
@@ -63,7 +72,7 @@ def main():
         for key, label, color, marker in [("demote", "demote", BLUE, "o"), ("promote", "promote", ORANGE, "^")]:
             thr = fit_throughput(size, times[key])
             ax.scatter(size, times[key], s=26, marker=marker, color=color, alpha=0.55, linewidths=0,
-                       label=f"{label}  ({thr:,.0f} MiB/s)")
+                       label=f"{label}  ({thr:,.0f} MiB/s, mean {times[key].mean():.3g} s)")
             ax.plot(xs, xs / thr, color=color, linewidth=2)
         ax.set(xscale="log", yscale="log", xlim=xlim, ylim=ylim, xlabel="Container memory at freeze (MiB)")
         ax.set_title(f"({chr(97 + i)}) {title}", loc="left")
@@ -73,6 +82,7 @@ def main():
         ax.xaxis.set_major_formatter(fmt)
         ax.yaxis.set_major_formatter(fmt)
         ax.xaxis.set_minor_formatter(FuncFormatter(lambda v, _: ""))
+        ax.yaxis.set_minor_formatter(MinorLabels())
         ax.grid(axis="y", which="major", color="#d0d0d0", linewidth=0.8)
         ax.legend(loc="upper left", frameon=False, handletextpad=0.6)
     axes[0][0].set_ylabel("Time (s)")

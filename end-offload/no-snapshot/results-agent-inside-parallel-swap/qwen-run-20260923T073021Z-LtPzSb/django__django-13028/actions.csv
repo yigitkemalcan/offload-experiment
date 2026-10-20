@@ -1,0 +1,21 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2399976847867136,2399977057046281,0,0,ls -la
+1,2,1,2399977064655311,2399977668876001,0,0,"find django -type f -name ""*.py"" | xargs grep -l ""check_filterable"""
+2,3,1,2399977672065460,2399977802256224,0,0,"cat django/db/models/sql/query.py | grep -A 20 ""def check_filterable"""
+3,4,1,2399977805021419,2399978050429243,0,0,"find django -type f -name ""*.py"" | xargs grep -l ""class Expression"""
+4,5,1,2399978053195911,2399978181668509,0,0,"grep -n ""class Expression"" django/db/models/expressions.py"
+5,6,1,2399978184684434,2399978311916610,0,0,"sed -n '418,450p' django/db/models/expressions.py"
+6,7,1,2399978317213322,2399978560364729,0,0,"find django -type f -name ""*.py"" | xargs grep -l ""filterable ="""
+7,8,1,2399978563537006,2399978692041770,0,0,"grep -n ""filterable"" django/db/models/expressions.py"
+8,9,1,2399978694929163,2399978825216693,0,0,"sed -n '155,165p' django/db/models/expressions.py"
+9,10,1,2399978828371217,2399978958624101,0,0,"sed -n '1200,1210p' django/db/models/expressions.py"
+10,11,1,2399978961415094,2399979096524903,0,0,"cp django/db/models/sql/query.py django/db/models/sql/query.py.bak && sed -i 's/getattr(expression, \""filterable\"", True)/hasattr(expression.__class__, ""filterable"") and expression.__class__.filterable/' django/db/models/sql/query.py"
+11,12,1,2399979099228644,2399980054811856,0,0,git diff -- django/db/models/sql/query.py > patch.txt
+12,13,1,2399980057584635,2399980185532882,0,0,cat patch.txt
+13,14,1,2399980188258513,2399980317465486,0,0,diff django/db/models/sql/query.py.bak django/db/models/sql/query.py
+14,15,1,2399980320303607,2399980448111461,0,0,"grep -A 5 ""def check_filterable"" django/db/models/sql/query.py"
+15,16,1,2399980450917712,2399980579841685,0,0,"sed -i 's/if not getattr(expression, .filterable., True):/if not (hasattr(expression.__class__, ""filterable"") and expression.__class__.filterable):/' django/db/models/sql/query.py"
+16,17,1,2399980582706867,2399980711072140,1,1,diff django/db/models/sql/query.py.bak django/db/models/sql/query.py
+17,18,1,2399980714284963,2399980851128907,0,0,git diff -- django/db/models/sql/query.py > patch.txt
+18,19,1,2399980854209853,2399980983883804,0,0,cat patch.txt
+19,20,1,2399980986676521,2399981115250199,,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

@@ -28,6 +28,14 @@ pristine copy (private_root.py --pristine: contents, types, modes, owners and ti
 is rewritten), idle for a random --idle time, run again. Each cycle's trajectory is cycle-NNN.traj.json, and
 cycles.jsonl logs every cycle and idle period. SIGTERM (`docker stop`) ends it: a cycle in progress is saved
 with exit status "Stopped".
+
+--hold (../end-offload, ../compression --agent-inside), as the DABStep replay's driver
+(../../offload-experiment-dabstep/replay/driver.py): the task runs once, and when the agent has finished (run()
+returned, before the trajectory is saved) the process writes done.json and waits for the host's release file,
+with the agent and its conversation in memory, so the host can freeze and measure the container at the end of
+the task. After the release it saves the trajectory and exits. The recorded trajectory, the replay's input, is
+evicted from the page cache right after it is read, and done.json right after it is written: neither is the
+agent's memory.
 """
 import argparse
 import copy
@@ -175,6 +183,27 @@ def stop_on_sigterm(*_):
     raise Stopped()
 
 
+def evict(path: Path):
+    """Write the file to disk and drop it from the page cache."""
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+        os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+    finally:
+        os.close(fd)
+
+
+def hold(output: Path, end: dict):
+    """--hold: tell the host the task is over (done.json) and wait for its release file."""
+    done, release = output / "done.json", output / "release"
+    tmp = done.with_suffix(".tmp")
+    tmp.write_text(json.dumps(end))
+    evict(tmp)
+    tmp.rename(done)  # appears whole
+    while not release.exists():
+        time.sleep(0.01)
+
+
 def run_cycle(trajectory: dict, args, path: Path, start_ns: int, cycle: int | None = None) -> dict:
     """Run the task once with a fresh agent (empty conversation), save its trajectory to path."""
     config = trajectory["info"]["config"]
@@ -193,6 +222,9 @@ def run_cycle(trajectory: dict, args, path: Path, start_ns: int, cycle: int | No
         exit_status, submission = type(e).__name__, ""
         extra_info = {"traceback": traceback.format_exc(), "exception_str": str(e)}
     end_ns = time.monotonic_ns()
+    if args.hold:
+        hold(args.output, {"ready_mono_ns": ready_ns, "end_mono_ns": end_ns, "exit_status": exit_status,
+                           "model_calls": agent.n_calls})
     agent.save(path, {
         "info": {
             "exit_status": exit_status, "submission": submission, "container_id": own_container_id(),
@@ -271,7 +303,8 @@ def main():
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--start-ns", type=int, required=True, help="host CLOCK_MONOTONIC just before `docker run`")
     ap.add_argument("--inference-delay", action="store_true", help="sleep each step's recorded inference time")
-    ap.add_argument("--sample-interval", type=float, default=0.1)
+    ap.add_argument("--sample-interval", type=float, default=0.1,
+                    help="seconds between samples of this process's memory (smaps_rollup); 0: no sampling")
     ap.add_argument("--owner", help="UID:GID to give the output files")
     ap.add_argument("--repeat", action="store_true",
                     help="run the task again and again until SIGTERM: restore, idle, run (cycle-NNN.traj.json)")
@@ -280,14 +313,22 @@ def main():
     ap.add_argument("--idle", type=float, nargs=2, default=(180, 300), metavar=("MIN", "MAX"),
                     help="--repeat: idle seconds between cycles, uniform in [MIN, MAX], drawn per cycle")
     ap.add_argument("--seed", type=int, default=0, help="--repeat: seed of the idle times")
+    ap.add_argument("--hold", action="store_true",
+                    help="at the end of the task write <output>/done.json and wait for <output>/release")
     args = ap.parse_args()
+    if args.hold and args.repeat:
+        ap.error("--hold runs the task once: not with --repeat")
 
     trajectory = json.loads(args.trace.read_text())
+    if args.hold:
+        evict(args.trace)
     instance_id = trajectory["instance_id"]
     stop = threading.Event()
-    sampler = threading.Thread(target=sample_memory, daemon=True,
-                               args=(args.output / "agent_process_samples.csv", args.sample_interval, stop))
-    sampler.start()
+    sampler = None
+    if args.sample_interval > 0:
+        sampler = threading.Thread(target=sample_memory, daemon=True,
+                                   args=(args.output / "agent_process_samples.csv", args.sample_interval, stop))
+        sampler.start()
     try:
         if not args.repeat:
             record = run_cycle(trajectory, args, args.output / f"{instance_id}.traj.json", args.start_ns)
@@ -316,7 +357,8 @@ def main():
                 pass
     finally:
         stop.set()
-        sampler.join()
+        if sampler:
+            sampler.join()
         if args.owner:
             uid, gid = map(int, args.owner.split(":"))
             for p in args.output.iterdir():

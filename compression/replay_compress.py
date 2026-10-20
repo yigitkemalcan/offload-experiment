@@ -13,6 +13,10 @@ mini-swe-agent-jovan-main/compression_experiment.py:
                   (fork) are copied once, keyed by page frame / swap slot.
   page cache    = every cached page of every file under the container's rootfs and /dev/shm (mincore).
                   File pages mapped by processes are copied here, not above, so no page is copied twice.
+                  A hard-linked file is copied under one of its names (SWE-bench images link ~27k files
+                  between conda's pkgs/ and the environments); capture_hardlink_duplicate_pages counts the
+                  pages its other names had. Captures made before this (results/ and the first
+                  results-agent-inside/, both runs of 2026-10-19 and earlier) copied them once per name.
 
 Zero pages are dropped, as densify() does for guest memory. The container is then thawed, the in-flight
 tool call finishes and the container is removed, so the codecs run on an otherwise idle host (as phase B
@@ -20,6 +24,16 @@ of compression_experiment.py). Each codec compresses the image file to a file an
 with the same command lines as compression_experiment.py; each is repeated and the median kept, and the
 start-up cost of the codec binary (run on an empty input) is reported so it can be subtracted, since
 container images are tens of MiB rather than GiB. Must run as root on the cgroup v1 host.
+
+--agent-inside: the task's agent runs inside its container, as in ../end-offload/replay_end.py --agent-inside
+(agent.py --hold replays the recorded run and runs the commands itself), and the memory is captured once the
+task is over, with the agent still alive, instead of at the threshold. The capture then holds the agent's
+process memory and the page cache of its runtime (../agent-in-container/runtime) with the rest. The codecs are
+timed as above. Results go to results-agent-inside/<run>/.
+
+Usage (from this directory):
+  sudo ../.venv/bin/python replay_compress.py ../../swebench-runs/<run>                 # -> results/<run>/
+  sudo ../.venv/bin/python replay_compress.py ../../swebench-runs/<run> --agent-inside  # -> results-agent-inside/<run>/
 """
 
 import argparse
@@ -43,9 +57,13 @@ sys.path.insert(0, str(ROOT.parent / "peak"))
 import replay_offload as ro  # noqa: E402
 from replay_offload import PAGE, PAGEMAP_CHUNK, cache_delta, cache_snapshot, now  # noqa: E402
 
+sys.path.insert(0, str(ROOT.parent / "end-offload"))
+import replay_end  # noqa: E402
+from offload_variants import one_name_per_file  # noqa: E402
+
 PRESENT, SWAPPED, FILE_OR_SHARED = 1 << 63, 1 << 62, 1 << 61
 PFN_MASK = (1 << 55) - 1  # page frame (present) or swap type+offset (swapped); zero unless root
-CODECS = "lz4,zstd-1,zstd-3,zstd-9,zstd-19"
+CODECS = "lz4,zstd-1,zstd-3,zstd-9"
 MIB = 2**20
 
 
@@ -163,6 +181,7 @@ def capture(cg: ro.Cgroup, cid, upper, roots, cache_before, sampler, rec: dict, 
     pids = cg.pids()
     procs, pstats = process_pages(pids)
     cache = cache_delta(cache_before, cache_snapshot(roots))
+    cache, rec["capture_hardlink_duplicate_pages"] = one_name_per_file(cache)
     t1 = now()
     shm = f"{roots[1]}/" if len(roots) > 1 else None
     image = DenseImage(out_dir / "capture.bin")
@@ -247,15 +266,15 @@ SUMMARY = ["task_id", "triggered", "trigger_source", "step", "action", "command"
            "freeze_rss", "freeze_cache", "freeze_shmem", "freeze_mapped_file", "freeze_kmem_usage_in_bytes",
            "freeze_latency_s", "pids", "capture_bytes", "capture_process_bytes", "capture_cache_bytes",
            "capture_shm_bytes", "capture_zero_pages", "process_swapped_pages", "process_shared_duplicate_pages",
-           "capture_process_read_errors", "capture_cache_read_errors", "capture_snapshot_s", "capture_write_s",
-           "frozen_call_returncode_after_thaw", "frozen_call_orig_returncode", "actions_replayed", "n_actions",
+           "capture_process_read_errors", "capture_cache_read_errors", "capture_hardlink_duplicate_pages",
+           "capture_snapshot_s", "capture_write_s", "frozen_call_returncode_after_thaw", "frozen_call_orig_returncode", "actions_replayed", "n_actions",
            "returncode_mismatches", "error"]
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("run_dir", type=Path)
-    ap.add_argument("--out", type=Path, default=ROOT / "results")
+    ap.add_argument("--out", type=Path, help="default: results/, with --agent-inside results-agent-inside/")
     ap.add_argument("--percentile", type=float, default=99)
     ap.add_argument("--fraction", type=float, default=0.8)
     ap.add_argument("--sample-interval", type=float, default=0.005)
@@ -263,6 +282,7 @@ def main():
     ap.add_argument("--repeats", type=int, default=3, help="runs per codec and direction; the median is kept")
     ap.add_argument("--keep-captures", action="store_true", help="keep <task>/capture.bin")
     ap.add_argument("--tasks", nargs="*", help="only these task ids")
+    replay_end.add_agent_inside_args(ap)
     args = ap.parse_args()
     codecs = args.codecs.split(",")
     if os.geteuid() != 0:
@@ -270,10 +290,15 @@ def main():
     for tool in {codec_commands(c)[0][0] for c in codecs}:
         if not shutil.which(tool):
             sys.exit(f"{tool} not found: sudo apt install {tool}")
+    summary = SUMMARY
+    if args.agent_inside:
+        replay_end.check_agent_runtime()
+        summary = SUMMARY + ["replay_s"] + replay_end.SUMMARY_INSIDE
     sys.setswitchinterval(0.0005)
-    out_root = args.out / args.run_dir.name
+    out_root = (args.out or ROOT / ("results-agent-inside" if args.agent_inside else "results")) / args.run_dir.name
     out_root.mkdir(parents=True, exist_ok=True)
-    tasks = ro.load_tasks(args.run_dir, args.percentile, args.fraction)
+    tasks = replay_end.load_tasks(args.run_dir) if args.agent_inside else \
+        ro.load_tasks(args.run_dir, args.percentile, args.fraction)
     if args.tasks:
         tasks = [t for t in tasks if t["task_id"] in args.tasks]
     print(f"{args.run_dir.name}: {len(tasks)} tasks, codecs {codecs}", flush=True)
@@ -285,7 +310,8 @@ def main():
         image = out_dir / "capture.bin"
         try:
             ro.drop_caches()
-            rec = ro.run_trial(task, out_dir, args, measure=capture)
+            trial = replay_end.run_trial_inside if args.agent_inside else ro.run_trial
+            rec = trial(task, out_dir, args, measure=capture)
         except Exception as e:  # keep going; record the failure
             rec = {"task_id": task["task_id"], "triggered": False, "error": repr(e)}
         if rec.get("capture_bytes"):
@@ -301,7 +327,7 @@ def main():
         print(f"[{n}/{len(tasks)}] {task['task_id']}: triggered={rec.get('triggered')} "
               f"image={rec.get('capture_bytes', 0) / MIB:.1f}MiB {timings} err={rec.get('error')}", flush=True)
     trials = [json.loads(p.read_text()) for p in sorted(out_root.glob("*/trial.json"))]
-    pd.DataFrame(trials).reindex(columns=SUMMARY).to_csv(out_root / "trials.csv", index=False)
+    pd.DataFrame(trials).reindex(columns=summary).to_csv(out_root / "trials.csv", index=False)
     rows = [{"task_id": t["task_id"]} | {k: v for k, v in c.items() if not k.endswith("_runs_s")}
             for t in trials for c in t.get("codecs", [])]
     with (out_root / "compression.csv").open("w", newline="") as f:

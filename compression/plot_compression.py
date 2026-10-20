@@ -4,6 +4,7 @@
 Usage (from this directory):
     ../.venv/bin/python plot_compression.py                      # every results/<run>/
     ../.venv/bin/python plot_compression.py results/<run> --primary zstd-3 --net
+    ../.venv/bin/python plot_compression.py --agent-inside       # results-agent-inside/ -> plots-agent-inside/
 
 Reads results/<run>/compression.csv and writes plots/<run>/ (plots-net/<run>/ with --net), plus plots/all/ over
 every run given, task indices continuing from one run to the next (the 100-task set of compression_experiment.py).
@@ -134,11 +135,14 @@ def main():
     ap.add_argument("runs", type=Path, nargs="*", help="results/<run> directories (default: all)")
     ap.add_argument("--primary", default="zstd-3", help="codec for the main per-task scatter plots (named LZ4 plots are also generated)")
     ap.add_argument("--net", action="store_true", help="subtract the codec start-up time")
+    ap.add_argument("--agent-inside", action="store_true",
+                    help="replay_compress.py --agent-inside results: results-agent-inside/ -> plots[-net]-agent-inside/")
     args = ap.parse_args()
-    runs = args.runs or sorted(p.parent for p in (ROOT / "results").glob("*/compression.csv"))
+    suffix = "-agent-inside" if args.agent_inside else ""
+    runs = args.runs or sorted(p.parent for p in (ROOT / f"results{suffix}").glob("*/compression.csv"))
     if not runs:
-        ap.error("no results/<run>/compression.csv found")
-    out = ROOT / ("plots-net" if args.net else "plots")
+        ap.error(f"no results{suffix}/<run>/compression.csv found")
+    out = ROOT / (("plots-net" if args.net else "plots") + suffix)
     everything = []
     for run in runs:
         rows = load(run, args.net, offset=len({r["index"] for r in everything}))
