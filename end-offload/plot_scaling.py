@@ -9,7 +9,7 @@ Default panels: (a) snapshot-promote/ (demote writes the cache snapshot, promote
 (b) no-snapshot/ (no snapshot; promote re-reads the container's files). x is the container's memory at the
 freeze (memory_at_freeze_mib.total), the same in every experiment. Each line is a constant-throughput fit,
 time = size / throughput; the throughput in the legend is the geometric mean of the per-task throughputs
-(the least-squares fit of a slope-1 line in log-log), followed by the mean time over the tasks.
+(the least-squares fit of a slope-1 line in log-log), followed by the median (p50) time over the tasks.
 Writes plots/snapshot_scaling.png.
 """
 
@@ -72,7 +72,7 @@ def main():
         for key, label, color, marker in [("demote", "demote", BLUE, "o"), ("promote", "promote", ORANGE, "^")]:
             thr = fit_throughput(size, times[key])
             ax.scatter(size, times[key], s=26, marker=marker, color=color, alpha=0.55, linewidths=0,
-                       label=f"{label}  ({thr:,.0f} MiB/s, mean {times[key].mean():.3g} s)")
+                       label=f"{label}  ({thr:,.0f} MiB/s, p50 {np.median(times[key]):.3g} s)")
             ax.plot(xs, xs / thr, color=color, linewidth=2)
         ax.set(xscale="log", yscale="log", xlim=xlim, ylim=ylim, xlabel="Container memory at freeze (MiB)")
         ax.set_title(f"({chr(97 + i)}) {title}", loc="left")

@@ -1,0 +1,1090 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2464809314860368,2464809509740557,0,0,ls -la
+1,1,2,2464809509764312,2464810100765118,0,0,"find . -type f -name ""*.py"" | grep -v ""__pycache__"" | grep -v "".pyc"""
+2,2,1,2464810109151774,2464810649420067,0,0,"find . -type f -name ""*.py"" | xargs grep -l ""GenericForeignKey"" | head -20"
+3,3,1,2464810652192977,2464810942931842,0,0,"find . -type f -name ""*.py"" | xargs grep -l ""prefetch_related"" | head -20"
+4,4,1,2464810945565021,2464811064058201,0,0,cat ./tests/prefetch_related/test_uuid.py
+5,5,1,2464811068224349,2464811185284833,0,0,cat ./tests/prefetch_related/models.py
+6,6,1,2464811188077450,2464811409308403,0,0,"find django -type f -name ""*.py"" | xargs grep -l ""class GenericForeignKey"""
+7,7,1,2464811412122419,2464811529380728,0,0,cat django/contrib/contenttypes/fields.py
+8,8,1,2464811532137608,2464811753850538,0,0,"find django -type f -name ""*.py"" | xargs grep -l ""prefetch_related_objects"""
+9,9,1,2464811756479799,2464811874353881,0,0,"grep -n ""prefetch_related_objects"" django/db/models/query.py"
+10,10,1,2464811877148792,2464811994352468,0,0,"grep -A 100 ""def prefetch_related_objects"" django/db/models/query.py"
+11,11,1,2464811997194478,2464812115180760,0,0,"grep -A 50 ""def get_prefetcher"" django/db/models/query.py"
+12,12,1,2464812117958900,2464812235810699,0,0,"grep -A 100 ""def prefetch_one_level"" django/db/models/query.py"
+13,13,1,2464812238542181,2464812355890229,0,0,"grep -A 50 ""def get_prefetch_queryset"" django/contrib/contenttypes/fields.py"
+14,14,1,2464812358652379,2464812579526379,0,0,"find django -type f -name ""*.py"" | xargs grep -l ""class UUIDField"""
+15,15,1,2464812582191276,2464812699289891,0,0,"grep -A 20 ""class UUIDField"" django/db/models/fields/__init__.py"
+16,16,1,2464812702176784,2464812819746597,0,0,"grep -A 50 ""def get_db_prep_value"" django/db/models/fields/__init__.py | head -30"
+17,17,1,2464812822437974,2464812940563702,0,0,"grep -A 30 ""def get_prep_value"" django/db/models/fields/__init__.py"
+18,18,1,2464812943335339,2464813060286428,1,1,"grep -A 10 ""class UUIDField"" django/db/models/fields/__init__.py | grep -A 20 ""def get_prep_value"""
+19,19,1,2464813062594619,2464813179766105,0,0,"grep -n ""class UUIDField"" django/db/models/fields/__init__.py"
+20,20,1,2464813182651115,2464813300696457,0,0,"sed -n '2300,2350p' django/db/models/fields/__init__.py"
+21,21,1,2464813303544578,2464813420845763,1,1,"grep -r ""def get_prep_value"" django/db/models/fields/__init__.py | grep -A 5 ""UUIDField"""
+22,23,1,2464813423255292,2464813540591633,1,1,"grep -A 10 ""def get_prep_value"" django/db/models/fields/__init__.py | grep -B 10 ""class UUIDField"""
+23,24,1,2464813542889984,2464813660785867,0,0,"grep -A 50 ""class UUIDField"" django/db/models/fields/__init__.py"
+24,25,1,2464813663649026,2464813781414755,0,0,cat ./tests/prefetch_related/test_uuid.py
+25,26,1,2464813784235795,2464813925878828,0,0,"find tests -name ""test_generic_relations.py"""
+26,27,1,2464813928203820,2464814071603856,0,0,"find tests -name ""*generic*relation*"""
+27,28,1,2464814074581489,2464814192744832,0,0,ls tests/generic_relations/
+28,29,1,2464814195597231,2464814313223078,0,0,cat tests/generic_relations/models.py
+29,30,1,2464814316106134,2464814434691818,0,0,cat tests/generic_relations/tests.py
+30,31,1,2464814437546431,2464814554909161,0,0,"echo ""from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from django.contrib.contenttypes.models import ContentType
+from django.db import models
+import uuid
+
+class UUIDPkModel(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=50)
+    
+    def __str__(self):
+        return self.name
+
+class UUIDTaggedItem(models.Model):
+    tag = models.SlugField()
+    content_type = models.ForeignKey(ContentType, models.CASCADE)
+    object_id = models.CharField(max_length=36)  # UUID is 36 chars with hyphens
+    content_object = GenericForeignKey()
+    
+    def __str__(self):
+        return self.tag
+
+class UUIDRelatedModel(models.Model):
+    uuid_related = models.ForeignKey(UUIDPkModel, models.CASCADE)
+    tags = GenericRelation(UUIDTaggedItem)
+    
+    def __str__(self):
+        return f'Related to {self.uuid_related}'"" >> tests/generic_relations/models.py"
+31,32,1,2464814557235565,2464814673446389,0,0,"echo ""
+    def test_prefetch_with_uuid_pk(self):
+        # Create a UUIDPkModel instance
+        uuid_obj = UUIDPkModel.objects.create(name='UUID Object')
+        
+        # Create a UUIDRelatedModel instance
+        related_obj = UUIDRelatedModel.objects.create(uuid_related=uuid_obj)
+        
+        # Create tags for the UUIDRelatedModel
+        tag1 = UUIDTaggedItem.objects.create(
+            tag='tag1',
+            content_object=related_obj
+        )
+        tag2 = UUIDTaggedItem.objects.create(
+            tag='tag2',
+            content_object=related_obj
+        )
+        
+        # Test prefetch_related
+        with self.assertNumQueries(2):
+            fetched_obj = UUIDRelatedModel.objects.prefetch_related('tags').get(pk=related_obj.pk)
+            
+        # This should work but currently fails
+        with self.assertNumQueries(0):
+            tags = list(fetched_obj.tags.all())
+            self.assertEqual(len(tags), 2)
+            self.assertEqual(tags[0].tag, 'tag1')
+            self.assertEqual(tags[1].tag, 'tag2')"" >> tests/generic_relations/tests.py"
+32,33,1,2464814675729472,2464815221914428,1,1,python -m unittest tests/generic_relations/tests.py
+33,34,1,2464815224797253,2464815340702926,0,0,"echo ""import os
+import django
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            'tests.generic_relations',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from django.test.runner import DiscoverRunner
+    runner = DiscoverRunner()
+    failures = runner.run_tests(['tests.generic_relations'])
+    if failures:
+        exit(1)"" > run_test.py"
+34,35,1,2464815343029300,2464815904577021,1,1,python run_test.py
+35,36,1,2464815907427215,2464816024545147,0,0,"echo ""import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            'tests.generic_relations',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    import unittest
+    loader = unittest.TestLoader()
+    suite = loader.discover('tests/generic_relations', pattern='tests.py')
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    if not result.wasSuccessful():
+        sys.exit(1)"" > run_test.py"
+36,37,1,2464816026850191,2464816419111208,0,0,python run_test.py
+37,38,1,2464816422058895,2464816539988016,0,0,ls -la tests/generic_relations/
+38,39,1,2464816542958796,2464816662576996,0,0,tail -n 50 tests/generic_relations/tests.py
+39,40,1,2464816665468638,2464816781628106,0,0,"echo ""import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            'tests.generic_relations',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from tests.generic_relations.tests import GenericRelationsTests
+    import unittest
+    suite = unittest.TestLoader().loadTestsFromTestCase(GenericRelationsTests)
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    if not result.wasSuccessful():
+        sys.exit(1)"" > run_test.py"
+40,41,1,2464816783961223,2464817244212743,1,1,python run_test.py
+41,42,1,2464817246928516,2464817362664160,0,0,"echo ""import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            'tests.generic_relations',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from django.core.management import call_command
+    from django.db import connection
+    
+    # Create tables
+    with connection.schema_editor() as schema_editor:
+        apps = django.apps.apps.get_app_configs()
+        for app_config in apps:
+            if app_config.label == 'generic_relations':
+                schema_editor.create_model(app_config.get_model('UUIDPkModel'))
+                schema_editor.create_model(app_config.get_model('UUIDTaggedItem'))
+                schema_editor.create_model(app_config.get_model('UUIDRelatedModel'))
+                schema_editor.create_model(app_config.get_model('Animal'))
+                schema_editor.create_model(app_config.get_model('Vegetable'))
+                schema_editor.create_model(app_config.get_model('Carrot'))
+                schema_editor.create_model(app_config.get_model('Mineral'))
+                schema_editor.create_model(app_config.get_model('Rock'))
+                schema_editor.create_model(app_config.get_model('ValuableRock'))
+                schema_editor.create_model(app_config.get_model('TaggedItem'))
+                schema_editor.create_model(app_config.get_model('ValuableTaggedItem'))
+                schema_editor.create_model(app_config.get_model('ManualPK'))
+                schema_editor.create_model(app_config.get_model('Gecko'))
+                schema_editor.create_model(app_config.get_model('ForProxyModelModel'))
+                schema_editor.create_model(app_config.get_model('ForConcreteModelModel'))
+                schema_editor.create_model(app_config.get_model('ConcreteRelatedModel'))
+                schema_editor.create_model(app_config.get_model('Comparison'))
+                schema_editor.create_model(app_config.get_model('AbstractComparison'))
+                schema_editor.create_model(app_config.get_model('AllowsNullGFK'))
+    
+    from tests.generic_relations.tests import GenericRelationsTests
+    import unittest
+    suite = unittest.TestLoader().loadTestsFromTestCase(GenericRelationsTests)
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    if not result.wasSuccessful():
+        sys.exit(1)"" > run_test.py"
+42,43,1,2464817364965367,2464817859539918,1,1,python run_test.py
+43,44,1,2464817862337203,2464817977734524,0,0,"echo ""import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+            'tests.generic_relations',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from django.core.management import call_command
+    from django.db import connection
+    
+    # Create all tables
+    call_command('migrate', verbosity=0, interactive=False)
+    
+    from tests.generic_relations.tests import GenericRelationsTests
+    import unittest
+    suite = unittest.TestLoader().loadTestsFromTestCase(GenericRelationsTests)
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    if not result.wasSuccessful():
+        sys.exit(1)"" > run_test.py"
+44,45,1,2464817980035190,2464818501263456,1,1,python run_test.py
+45,46,1,2464818503997834,2464818620253421,2,2,"echo ""import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from django.db import models
+    from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+    from django.contrib.contenttypes.models import ContentType
+    import uuid
+    
+    # Define models
+    class UUIDPkModel(models.Model):
+        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+        name = models.CharField(max_length=50)
+        
+        def __str__(self):
+            return self.name
+    
+    class UUIDTaggedItem(models.Model):
+        tag = models.SlugField()
+        content_type = models.ForeignKey(ContentType, models.CASCADE)
+        object_id = models.CharField(max_length=36)
+        content_object = GenericForeignKey()
+        
+        def __str__(self):
+            return self.tag
+    
+    class UUIDRelatedModel(models.Model):
+        uuid_related = models.ForeignKey(UUIDPkModel, models.CASCADE)
+        tags = GenericRelation(UUIDTaggedItem)
+        
+        def __str__(self):
+            return f'Related to {self.uuid_related}'
+    
+    # Create tables
+    from django.core.management import call_command
+    call_command('migrate', verbosity=0, interactive=False)
+    
+    # Create test data
+    uuid_obj = UUIDPkModel.objects.create(name='UUID Object')
+    related_obj = UUIDRelatedModel.objects.create(uuid_related=uuid_obj)
+    
+    # Create tags
+    tag1 = UUIDTaggedItem.objects.create(
+        tag='tag1',
+        content_object=related_obj
+    )
+    tag2 = UUIDTaggedItem.objects.create(
+        tag='tag2',
+        content_object=related_obj
+    )
+    
+    # Test prefetch_related
+    print(""Testing prefetch_related..."")
+    fetched_obj = UUIDRelatedModel.objects.prefetch_related('tags').get(pk=related_obj.pk)
+    tags = list(fetched_obj.tags.all())
+    print(f""Found {len(tags)} tags: {[tag.tag for tag in tags]}"")
+    
+    # Verify the tags are correctly prefetched
+    assert len(tags) == 2, f""Expected 2 tags, got {len(tags)}""
+    assert 'tag1' in [tag.tag for tag in tags], ""tag1 not found in prefetched tags""
+    assert 'tag2' in [tag.tag for tag in tags], ""tag2 not found in prefetched tags""
+    
+    print(""Test passed!"")"" > minimal_test.py"
+46,47,1,2464818623002085,2464818739705130,0,0,"echo ""import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from django.db import models
+    from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+    from django.contrib.contenttypes.models import ContentType
+    import uuid
+    
+    # Define models
+    class UUIDPkModel(models.Model):
+        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+        name = models.CharField(max_length=50)
+        
+        def __str__(self):
+            return self.name
+    
+    class UUIDTaggedItem(models.Model):
+        tag = models.SlugField()
+        content_type = models.ForeignKey(ContentType, models.CASCADE)
+        object_id = models.CharField(max_length=36)
+        content_object = GenericForeignKey()
+        
+        def __str__(self):
+            return self.tag
+    
+    class UUIDRelatedModel(models.Model):
+        uuid_related = models.ForeignKey(UUIDPkModel, models.CASCADE)
+        tags = GenericRelation(UUIDTaggedItem)
+        
+        def __str__(self):
+            return 'Related to {}'.format(self.uuid_related)
+    
+    # Create tables
+    from django.core.management import call_command
+    call_command('migrate', verbosity=0, interactive=False)
+    
+    # Create test data
+    uuid_obj = UUIDPkModel.objects.create(name='UUID Object')
+    related_obj = UUIDRelatedModel.objects.create(uuid_related=uuid_obj)
+    
+    # Create tags
+    tag1 = UUIDTaggedItem.objects.create(
+        tag='tag1',
+        content_object=related_obj
+    )
+    tag2 = UUIDTaggedItem.objects.create(
+        tag='tag2',
+        content_object=related_obj
+    )
+    
+    # Test prefetch_related
+    print(""Testing prefetch_related..."")
+    fetched_obj = UUIDRelatedModel.objects.prefetch_related('tags').get(pk=related_obj.pk)
+    tags = list(fetched_obj.tags.all())
+    print(""Found {} tags: {}"".format(len(tags), [tag.tag for tag in tags]))
+    
+    # Verify the tags are correctly prefetched
+    assert len(tags) == 2, ""Expected 2 tags, got {}"".format(len(tags))
+    assert 'tag1' in [tag.tag for tag in tags], ""tag1 not found in prefetched tags""
+    assert 'tag2' in [tag.tag for tag in tags], ""tag2 not found in prefetched tags""
+    
+    print(""Test passed!"")"" > minimal_test.py"
+47,48,1,2464818742025463,2464818873011355,1,1,python minimal_test.py
+48,49,1,2464818875843075,2464818992097350,0,0,"echo ""import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from django.db import models
+    from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+    from django.contrib.contenttypes.models import ContentType
+    import uuid
+    
+    # Define models
+    class UUIDPkModel(models.Model):
+        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+        name = models.CharField(max_length=50)
+        
+        def __str__(self):
+            return self.name
+    
+    class UUIDTaggedItem(models.Model):
+        tag = models.SlugField()
+        content_type = models.ForeignKey(ContentType, models.CASCADE)
+        object_id = models.CharField(max_length=36)
+        content_object = GenericForeignKey()
+        
+        def __str__(self):
+            return self.tag
+    
+    class UUIDRelatedModel(models.Model):
+        uuid_related = models.ForeignKey(UUIDPkModel, models.CASCADE)
+        tags = GenericRelation(UUIDTaggedItem)
+        
+        def __str__(self):
+            return 'Related to {}'.format(self.uuid_related)
+    
+    # Create tables
+    from django.core.management import call_command
+    call_command('migrate', verbosity=0, interactive=False)
+    
+    # Create test data
+    uuid_obj = UUIDPkModel.objects.create(name='UUID Object')
+    related_obj = UUIDRelatedModel.objects.create(uuid_related=uuid_obj)
+    
+    # Create tags
+    tag1 = UUIDTaggedItem.objects.create(
+        tag='tag1',
+        content_object=related_obj
+    )
+    tag2 = UUIDTaggedItem.objects.create(
+        tag='tag2',
+        content_object=related_obj
+    )
+    
+    # Test prefetch_related
+    print(""Testing prefetch_related..."")
+    fetched_obj = UUIDRelatedModel.objects.prefetch_related('tags').get(pk=related_obj.pk)
+    tags = list(fetched_obj.tags.all())
+    print(""Found {} tags: {}"".format(len(tags), [tag.tag for tag in tags]))
+    
+    # Verify the tags are correctly prefetched
+    assert len(tags) == 2, ""Expected 2 tags, got {}"".format(len(tags))
+    assert 'tag1' in [tag.tag for tag in tags], ""tag1 not found in prefetched tags""
+    assert 'tag2' in [tag.tag for tag in tags], ""tag2 not found in prefetched tags""
+    
+    print(""Test passed!"")"" > minimal_test.py"
+49,50,1,2464818994554479,2464819124941089,1,1,python minimal_test.py
+50,51,1,2464819127782638,2464819243721212,0,0,"echo ""import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from django.db import models
+    from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+    from django.contrib.contenttypes.models import ContentType
+    import uuid
+    
+    # Define models
+    class UUIDPkModel(models.Model):
+        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+        name = models.CharField(max_length=50)
+        
+        def __str__(self):
+            return self.name
+    
+    class UUIDTaggedItem(models.Model):
+        tag = models.SlugField()
+        content_type = models.ForeignKey(ContentType, models.CASCADE)
+        object_id = models.CharField(max_length=36)
+        content_object = GenericForeignKey()
+        
+        def __str__(self):
+            return self.tag
+    
+    class UUIDRelatedModel(models.Model):
+        uuid_related = models.ForeignKey(UUIDPkModel, models.CASCADE)
+        tags = GenericRelation(UUIDTaggedItem)
+        
+        def __str__(self):
+            return 'Related to {}'.format(self.uuid_related)
+    
+    # Create tables
+    from django.core.management import call_command
+    call_command('migrate', verbosity=0, interactive=False)
+    
+    # Create test data
+    uuid_obj = UUIDPkModel.objects.create(name='UUID Object')
+    related_obj = UUIDRelatedModel.objects.create(uuid_related=uuid_obj)
+    
+    # Create tags
+    tag1 = UUIDTaggedItem.objects.create(
+        tag='tag1',
+        content_object=related_obj
+    )
+    tag2 = UUIDTaggedItem.objects.create(
+        tag='tag2',
+        content_object=related_obj
+    )
+    
+    # Test prefetch_related
+    print(""Testing prefetch_related..."")
+    fetched_obj = UUIDRelatedModel.objects.prefetch_related('tags').get(pk=related_obj.pk)
+    tags = list(fetched_obj.tags.all())
+    print(""Found {} tags: {}"".format(len(tags), [tag.tag for tag in tags]))
+    
+    # Verify the tags are correctly prefetched
+    assert len(tags) == 2, ""Expected 2 tags, got {}"".format(len(tags))
+    assert 'tag1' in [tag.tag for tag in tags], ""tag1 not found in prefetched tags""
+    assert 'tag2' in [tag.tag for tag in tags], ""tag2 not found in prefetched tags""
+    
+    print(""Test passed!"")"" > minimal_test.py"
+51,52,1,2464819246067854,2464819376853531,1,1,python minimal_test.py
+52,53,1,2464819379712251,2464819496401120,0,0,"cat > minimal_test.py << 'EOL'
+import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from django.db import models
+    from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+    from django.contrib.contenttypes.models import ContentType
+    import uuid
+    
+    # Define models
+    class UUIDPkModel(models.Model):
+        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+        name = models.CharField(max_length=50)
+        
+        def __str__(self):
+            return self.name
+    
+    class UUIDTaggedItem(models.Model):
+        tag = models.SlugField()
+        content_type = models.ForeignKey(ContentType, models.CASCADE)
+        object_id = models.CharField(max_length=36)
+        content_object = GenericForeignKey()
+        
+        def __str__(self):
+            return self.tag
+    
+    class UUIDRelatedModel(models.Model):
+        uuid_related = models.ForeignKey(UUIDPkModel, models.CASCADE)
+        tags = GenericRelation(UUIDTaggedItem)
+        
+        def __str__(self):
+            return 'Related to {}'.format(self.uuid_related)
+    
+    # Create tables
+    from django.core.management import call_command
+    call_command('migrate', verbosity=0, interactive=False)
+    
+    # Create test data
+    uuid_obj = UUIDPkModel.objects.create(name='UUID Object')
+    related_obj = UUIDRelatedModel.objects.create(uuid_related=uuid_obj)
+    
+    # Create tags
+    tag1 = UUIDTaggedItem.objects.create(
+        tag='tag1',
+        content_object=related_obj
+    )
+    tag2 = UUIDTaggedItem.objects.create(
+        tag='tag2',
+        content_object=related_obj
+    )
+    
+    # Test prefetch_related
+    print(""Testing prefetch_related..."")
+    fetched_obj = UUIDRelatedModel.objects.prefetch_related('tags').get(pk=related_obj.pk)
+    tags = list(fetched_obj.tags.all())
+    print(""Found {} tags: {}"".format(len(tags), [tag.tag for tag in tags]))
+    
+    # Verify the tags are correctly prefetched
+    assert len(tags) == 2, ""Expected 2 tags, got {}"".format(len(tags))
+    assert 'tag1' in [tag.tag for tag in tags], ""tag1 not found in prefetched tags""
+    assert 'tag2' in [tag.tag for tag in tags], ""tag2 not found in prefetched tags""
+    
+    print(""Test passed!"")
+EOL"
+53,54,1,2464819498761828,2464819858712692,1,1,python minimal_test.py
+54,55,1,2464819861642816,2464819979041643,0,0,"cat > minimal_test.py << 'EOL'
+import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from django.db import models
+    from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+    from django.contrib.contenttypes.models import ContentType
+    import uuid
+    
+    # Define models
+    class UUIDPkModel(models.Model):
+        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+        name = models.CharField(max_length=50)
+        
+        def __str__(self):
+            return self.name
+            
+        class Meta:
+            app_label = 'contenttypes'
+    
+    class UUIDTaggedItem(models.Model):
+        tag = models.SlugField()
+        content_type = models.ForeignKey(ContentType, models.CASCADE)
+        object_id = models.CharField(max_length=36)
+        content_object = GenericForeignKey()
+        
+        def __str__(self):
+            return self.tag
+            
+        class Meta:
+            app_label = 'contenttypes'
+    
+    class UUIDRelatedModel(models.Model):
+        uuid_related = models.ForeignKey(UUIDPkModel, models.CASCADE)
+        tags = GenericRelation(UUIDTaggedItem)
+        
+        def __str__(self):
+            return 'Related to {}'.format(self.uuid_related)
+            
+        class Meta:
+            app_label = 'contenttypes'
+    
+    # Create tables
+    from django.core.management import call_command
+    call_command('migrate', verbosity=0, interactive=False)
+    
+    # Create test data
+    uuid_obj = UUIDPkModel.objects.create(name='UUID Object')
+    related_obj = UUIDRelatedModel.objects.create(uuid_related=uuid_obj)
+    
+    # Create tags
+    tag1 = UUIDTaggedItem.objects.create(
+        tag='tag1',
+        content_object=related_obj
+    )
+    tag2 = UUIDTaggedItem.objects.create(
+        tag='tag2',
+        content_object=related_obj
+    )
+    
+    # Test prefetch_related
+    print(""Testing prefetch_related..."")
+    fetched_obj = UUIDRelatedModel.objects.prefetch_related('tags').get(pk=related_obj.pk)
+    tags = list(fetched_obj.tags.all())
+    print(""Found {} tags: {}"".format(len(tags), [tag.tag for tag in tags]))
+    
+    # Verify the tags are correctly prefetched
+    assert len(tags) == 2, ""Expected 2 tags, got {}"".format(len(tags))
+    assert 'tag1' in [tag.tag for tag in tags], ""tag1 not found in prefetched tags""
+    assert 'tag2' in [tag.tag for tag in tags], ""tag2 not found in prefetched tags""
+    
+    print(""Test passed!"")
+EOL"
+55,56,1,2464819981388145,2464820383433535,1,1,python minimal_test.py
+56,57,1,2464820385761522,2464820503025286,0,0,"cat > minimal_test.py << 'EOL'
+import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from django.db import models
+    from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+    from django.contrib.contenttypes.models import ContentType
+    import uuid
+    from django.db import connection
+    
+    # Define models
+    class UUIDPkModel(models.Model):
+        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+        name = models.CharField(max_length=50)
+        
+        def __str__(self):
+            return self.name
+            
+        class Meta:
+            app_label = 'contenttypes'
+    
+    class UUIDTaggedItem(models.Model):
+        tag = models.SlugField()
+        content_type = models.ForeignKey(ContentType, models.CASCADE)
+        object_id = models.CharField(max_length=36)
+        content_object = GenericForeignKey()
+        
+        def __str__(self):
+            return self.tag
+            
+        class Meta:
+            app_label = 'contenttypes'
+    
+    class UUIDRelatedModel(models.Model):
+        uuid_related = models.ForeignKey(UUIDPkModel, models.CASCADE)
+        tags = GenericRelation(UUIDTaggedItem)
+        
+        def __str__(self):
+            return 'Related to {}'.format(self.uuid_related)
+            
+        class Meta:
+            app_label = 'contenttypes'
+    
+    # Create tables
+    with connection.schema_editor() as schema_editor:
+        schema_editor.create_model(UUIDPkModel)
+        schema_editor.create_model(UUIDTaggedItem)
+        schema_editor.create_model(UUIDRelatedModel)
+    
+    # Create test data
+    uuid_obj = UUIDPkModel.objects.create(name='UUID Object')
+    related_obj = UUIDRelatedModel.objects.create(uuid_related=uuid_obj)
+    
+    # Create tags
+    tag1 = UUIDTaggedItem.objects.create(
+        tag='tag1',
+        content_object=related_obj
+    )
+    tag2 = UUIDTaggedItem.objects.create(
+        tag='tag2',
+        content_object=related_obj
+    )
+    
+    # Test prefetch_related
+    print(""Testing prefetch_related..."")
+    fetched_obj = UUIDRelatedModel.objects.prefetch_related('tags').get(pk=related_obj.pk)
+    tags = list(fetched_obj.tags.all())
+    print(""Found {} tags: {}"".format(len(tags), [tag.tag for tag in tags]))
+    
+    # Verify the tags are correctly prefetched
+    assert len(tags) == 2, ""Expected 2 tags, got {}"".format(len(tags))
+    assert 'tag1' in [tag.tag for tag in tags], ""tag1 not found in prefetched tags""
+    assert 'tag2' in [tag.tag for tag in tags], ""tag2 not found in prefetched tags""
+    
+    print(""Test passed!"")
+EOL"
+57,58,1,2464820505352862,2464820893764680,1,1,python minimal_test.py
+58,59,1,2464820896655000,2464821014394554,0,0,"cat > minimal_test.py << 'EOL'
+import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from django.db import models
+    from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+    from django.contrib.contenttypes.models import ContentType
+    import uuid
+    from django.db import connection
+    from django.core.management import call_command
+    
+    # Create all tables with migrate
+    call_command('migrate', verbosity=0, interactive=False)
+    
+    # Define models
+    class UUIDPkModel(models.Model):
+        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+        name = models.CharField(max_length=50)
+        
+        def __str__(self):
+            return self.name
+            
+        class Meta:
+            app_label = 'contenttypes'
+    
+    class UUIDTaggedItem(models.Model):
+        tag = models.SlugField()
+        content_type = models.ForeignKey(ContentType, models.CASCADE)
+        object_id = models.CharField(max_length=36)
+        content_object = GenericForeignKey()
+        
+        def __str__(self):
+            return self.tag
+            
+        class Meta:
+            app_label = 'contenttypes'
+    
+    class UUIDRelatedModel(models.Model):
+        uuid_related = models.ForeignKey(UUIDPkModel, models.CASCADE)
+        tags = GenericRelation(UUIDTaggedItem)
+        
+        def __str__(self):
+            return 'Related to {}'.format(self.uuid_related)
+            
+        class Meta:
+            app_label = 'contenttypes'
+    
+    # Create tables for our models
+    with connection.schema_editor() as schema_editor:
+        schema_editor.create_model(UUIDPkModel)
+        schema_editor.create_model(UUIDTaggedItem)
+        schema_editor.create_model(UUIDRelatedModel)
+    
+    # Create test data
+    uuid_obj = UUIDPkModel.objects.create(name='UUID Object')
+    related_obj = UUIDRelatedModel.objects.create(uuid_related=uuid_obj)
+    
+    # Create tags
+    tag1 = UUIDTaggedItem.objects.create(
+        tag='tag1',
+        content_object=related_obj
+    )
+    tag2 = UUIDTaggedItem.objects.create(
+        tag='tag2',
+        content_object=related_obj
+    )
+    
+    # Test prefetch_related
+    print(""Testing prefetch_related..."")
+    fetched_obj = UUIDRelatedModel.objects.prefetch_related('tags').get(pk=related_obj.pk)
+    tags = list(fetched_obj.tags.all())
+    print(""Found {} tags: {}"".format(len(tags), [tag.tag for tag in tags]))
+    
+    # Verify the tags are correctly prefetched
+    assert len(tags) == 2, ""Expected 2 tags, got {}"".format(len(tags))
+    assert 'tag1' in [tag.tag for tag in tags], ""tag1 not found in prefetched tags""
+    assert 'tag2' in [tag.tag for tag in tags], ""tag2 not found in prefetched tags""
+    
+    print(""Test passed!"")
+EOL"
+59,60,1,2464821016716280,2464821418968386,0,0,python minimal_test.py
+60,61,1,2464821421943835,2464821538564405,0,0,"cat > minimal_test.py << 'EOL'
+import os
+import django
+import sys
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[
+            'django.contrib.contenttypes',
+        ],
+        USE_TZ=False,
+    )
+
+django.setup()
+
+if __name__ == '__main__':
+    from django.db import models
+    from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+    from django.contrib.contenttypes.models import ContentType
+    import uuid
+    from django.db import connection
+    from django.core.management import call_command
+    
+    # Create all tables with migrate
+    call_command('migrate', verbosity=0, interactive=False)
+    
+    # Define models
+    class UUIDPkModel(models.Model):
+        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+        name = models.CharField(max_length=50)
+        
+        def __str__(self):
+            return self.name
+            
+        class Meta:
+            app_label = 'contenttypes'
+    
+    class UUIDTaggedItem(models.Model):
+        tag = models.SlugField()
+        content_type = models.ForeignKey(ContentType, models.CASCADE)
+        object_id = models.CharField(max_length=255)  # Changed to 255 to match the issue
+        content_object = GenericForeignKey()
+        
+        def __str__(self):
+            return self.tag
+            
+        class Meta:
+            app_label = 'contenttypes'
+    
+    class UUIDRelatedModel(models.Model):
+        uuid_related = models.ForeignKey(UUIDPkModel, models.CASCADE)
+        tags = GenericRelation(UUIDTaggedItem)
+        
+        def __str__(self):
+            return 'Related to {}'.format(self.uuid_related)
+            
+        class Meta:
+            app_label = 'contenttypes'
+    
+    # Create tables for our models
+    with connection.schema_editor() as schema_editor:
+        schema_editor.create_model(UUIDPkModel)
+        schema_editor.create_model(UUIDTaggedItem)
+        schema_editor.create_model(UUIDRelatedModel)
+    
+    # Create test data
+    uuid_obj = UUIDPkModel.objects.create(name='UUID Object')
+    related_obj = UUIDRelatedModel.objects.create(uuid_related=uuid_obj)
+    
+    # Create tags
+    tag1 = UUIDTaggedItem.objects.create(
+        tag='tag1',
+        content_object=related_obj
+    )
+    tag2 = UUIDTaggedItem.objects.create(
+        tag='tag2',
+        content_object=related_obj
+    )
+    
+    # Test prefetch_related
+    print(""Testing prefetch_related..."")
+    fetched_obj = UUIDRelatedModel.objects.prefetch_related('tags').get(pk=related_obj.pk)
+    tags = list(fetched_obj.tags.all())
+    print(""Found {} tags: {}"".format(len(tags), [tag.tag for tag in tags]))
+    
+    # Verify the tags are correctly prefetched
+    assert len(tags) == 2, ""Expected 2 tags, got {}"".format(len(tags))
+    assert 'tag1' in [tag.tag for tag in tags], ""tag1 not found in prefetched tags""
+    assert 'tag2' in [tag.tag for tag in tags], ""tag2 not found in prefetched tags""
+    
+    print(""Test passed!"")
+EOL"
+61,62,1,2464821540912059,2464821946111222,0,0,python minimal_test.py
+62,64,1,2464821949000560,2464822151342218,0,0,"find django -type f -name ""fields.py"" | grep ""contenttypes"""

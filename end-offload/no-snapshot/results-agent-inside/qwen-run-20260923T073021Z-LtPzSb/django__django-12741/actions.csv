@@ -1,0 +1,13 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2468308688629974,2468309681833534,0,0,"find . -type f -name ""*.py"" | xargs grep -l ""execute_sql_flush"""
+1,2,1,2468309688213745,2468309806899243,0,0,"cat ./django/db/backends/base/operations.py | grep -A 10 ""execute_sql_flush"""
+2,3,1,2468309809667894,2468310681717003,0,0,"grep -r ""execute_sql_flush"" . | grep -v ""test_"" | grep -v ""/tests/"""
+3,4,1,2468310684444166,2468310801313480,0,0,"cat ./django/core/management/commands/flush.py | grep -B 5 -A 10 ""execute_sql_flush"""
+4,5,1,2468310803916612,2468310922174880,0,0,"find ./django/db/backends -name ""operations.py"" | grep -v ""base"""
+5,6,1,2468310924746853,2468311043503083,1,1,"grep -r ""execute_sql_flush"" ./django/db/backends/ | grep -v ""base/operations.py"""
+6,7,1,2468311046243803,2468311164409999,0,0,"sed -i 's/def execute_sql_flush(self, using, sql_list):/def execute_sql_flush(self, sql_list):/' ./django/db/backends/base/operations.py"
+7,8,1,2468311166843784,2468311283290201,0,0,"sed -i 's/transaction.atomic(using=using, savepoint=/transaction.atomic(using=self.connection.alias, savepoint=/' ./django/db/backends/base/operations.py"
+8,9,1,2468311285545662,2468311401481915,0,0,"sed -i 's/connection.ops.execute_sql_flush(database, sql_list)/connection.ops.execute_sql_flush(sql_list)/' ./django/core/management/commands/flush.py"
+9,10,1,2468311403718230,2468311531717740,0,0,git diff -- django/db/backends/base/operations.py django/core/management/commands/flush.py > patch.txt
+10,11,1,2468311535159661,2468311652113845,0,0,cat patch.txt
+11,12,1,2468311654836119,2468311770961656,,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

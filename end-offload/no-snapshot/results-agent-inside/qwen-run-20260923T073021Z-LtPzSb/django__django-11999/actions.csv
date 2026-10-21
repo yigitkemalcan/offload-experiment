@@ -1,0 +1,129 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2467858083396766,2467858268345866,0,0,ls -la
+1,2,1,2467858274486789,2467858747292857,0,0,"find django -type f -name ""*.py"" | grep -i ""fields"" | grep -v ""__pycache__"" | head -20"
+2,3,1,2467858750147209,2467858866124873,1,1,"grep -A 20 -B 20 ""get_.+_display"" django/db/models/fields/__init__.py"
+3,4,1,2467858868438553,2467859057455983,0,0,"find django/db/models -type f -name ""*.py"" -exec grep -l ""get_.*_display"" {} \;"
+4,5,1,2467859060130929,2467859175496281,0,0,"grep -A 15 -B 5 ""get_.*_display"" django/db/models/base.py"
+5,6,1,2467859178337309,2467859294109392,0,0,"grep -A 30 -B 5 ""_get_FIELD_display"" django/db/models/fields/__init__.py"
+6,7,1,2467859298142901,2467859531567769,0,0,"find tests -type f -name ""*.py"" | grep -i ""display"" | head -20"
+7,8,1,2467859534240761,2467859679730244,0,0,"find tests -type f -name ""*.py"" | grep -i ""choice"" | head -20"
+8,9,1,2467859683214556,2467859830262395,0,0,"find tests -path ""*/models/*"" -type f -name ""*.py"" | grep -i ""field"" | head -20"
+9,10,1,2467859833789366,2467863112179694,0,0,"find tests -type f -name ""*.py"" -exec grep -l ""get_.*_display"" {} \; | head -20"
+10,11,1,2467863115332638,2467863234578992,0,0,"grep -A 10 -B 10 ""get_.*_display"" tests/model_fields/tests.py"
+11,12,1,2467863237974108,2467863357660149,0,0,"cat > reproduce_issue.py << 'EOL'
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+# Setup Django
+import django
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[],
+    )
+    django.setup()
+
+class FooBar(models.Model):
+    foo_bar = models.CharField(_(""foo""), choices=[(1, 'foo'), (2, 'bar')])
+    
+    def __str__(self):
+        return self.get_foo_bar_display()
+    
+    def get_foo_bar_display(self):
+        return ""something""
+
+# Test the behavior
+instance = FooBar(foo_bar=1)
+print(f""get_foo_bar_display() returns: '{instance.get_foo_bar_display()}'"")
+print(f""__str__() returns: '{instance}'"")
+EOL"
+12,13,1,2467863359974755,2467864030119090,1,1,python reproduce_issue.py
+13,14,1,2467864033232777,2467864151897812,0,0,"cat > reproduce_issue.py << 'EOL'
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+# Setup Django
+import django
+from django.conf import settings
+
+if not settings.configured:
+    settings.configure(
+        DEBUG=True,
+        DATABASES={
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                'NAME': ':memory:',
+            }
+        },
+        INSTALLED_APPS=[__name__],
+    )
+    django.setup()
+
+class FooBar(models.Model):
+    foo_bar = models.CharField(_(""foo""), choices=[(1, 'foo'), (2, 'bar')])
+    
+    def __str__(self):
+        return self.get_foo_bar_display()
+    
+    def get_foo_bar_display(self):
+        return ""something""
+    
+    class Meta:
+        app_label = 'reproduce_issue'
+
+# Test the behavior
+instance = FooBar(foo_bar=1)
+print(f""get_foo_bar_display() returns: '{instance.get_foo_bar_display()}'"")
+print(f""__str__() returns: '{instance}'"")
+EOL"
+14,15,1,2467864154269420,2467864567327984,0,0,python reproduce_issue.py
+15,16,1,2467864570504499,2467864692559323,0,0,cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.bak
+16,18,1,2467864695811069,2467864814535855,0,0,"cat > /tmp/fix.patch << 'EOL'
+diff --git a/django/db/models/fields/__init__.py b/django/db/models/fields/__init__.py
+index 1234567..89abcde 100644
+--- a/django/db/models/fields/__init__.py
++++ b/django/db/models/fields/__init__.py
+@@ -123,7 +123,8 @@ class Field:
+         if self.choices is not None:
+             setattr(cls, 'get_%s_display' % self.name,
+                     partialmethod(cls._get_FIELD_display, field=self))
+-                    
++
++        # Only set get_FOO_display if it doesn't already exist
+         if self.choices is not None and not hasattr(cls, 'get_%s_display' % self.name):
+             setattr(cls, 'get_%s_display' % self.name,
+                     partialmethod(cls._get_FIELD_display, field=self))
+EOL"
+17,19,1,2467864817870496,2467864937333895,0,0,"grep -n ""if self.choices is not None:"" django/db/models/fields/__init__.py"
+18,20,1,2467864940527793,2467865059078433,0,0,"grep -A 10 ""if self.choices is not None:"" django/db/models/fields/__init__.py"
+19,21,1,2467865062361317,2467865180365439,0,0,"cat > /tmp/fix.patch << 'EOL'
+diff --git a/django/db/models/fields/__init__.py b/django/db/models/fields/__init__.py
+--- a/django/db/models/fields/__init__.py
++++ b/django/db/models/fields/__init__.py
+@@ -765,7 +765,8 @@ class Field:
+         if self.choices is not None:
+             setattr(cls, 'get_%s_display' % self.name,
+                     partialmethod(cls._get_FIELD_display, field=self))
+-                    
++EOL"
+20,22,1,2467865183549298,2467865301146083,0,0,"printf ""diff --git a/django/db/models/fields/__init__.py b/django/db/models/fields/__init__.py\n--- a/django/db/models/fields/__init__.py\n+++ b/django/db/models/fields/__init__.py\n@@ -765,7 +765,8 @@ class Field:\n         if self.choices is not None:\n             setattr(cls, 'get_%s_display' % self.name,\n                     partialmethod(cls._get_FIELD_display, field=self))\n-                    \n+        # Only set get_FOO_display if it doesn't already exist\n+        if self.choices is not None and not hasattr(cls, 'get_%s_display' % self.name):\n+            setattr(cls, 'get_%s_display' % self.name,\n+                    partialmethod(cls._get_FIELD_display, field=self))\n"" > /tmp/fix.patch"
+21,23,1,2467865303432302,2467865426133901,2,2,cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.bak && patch django/db/models/fields/__init__.py /tmp/fix.patch
+22,24,1,2467865429277335,2467865550768739,0,0,"cp django/db/models/fields/__init__.py django/db/models/fields/__init__.py.bak && sed -i '765,767c\\t\tif self.choices is not None and not hasattr(cls, \""get_%s_display\"" % self.name):\n\t\t\tsetattr(cls, \""get_%s_display\"" % self.name,\n\t\t\t\t\tpartialmethod(cls._get_FIELD_display, field=self))' django/db/models/fields/__init__.py"
+23,25,1,2467865553863681,2467865671733988,0,0,"grep -A 5 ""if self.choices is not None"" django/db/models/fields/__init__.py"
+24,26,1,2467865674799936,2467865870163305,1,1,python reproduce_issue.py
+25,27,1,2467865873761139,2467865993001540,0,0,"sed -i '765,767s/\t/    /g' django/db/models/fields/__init__.py"
+26,28,1,2467865996205957,2467866114198463,0,0,"grep -n "".*get_%s_display.*"" django/db/models/fields/__init__.py"
+27,29,1,2467866117333260,2467866235782801,0,0,"grep -A 5 -B 2 ""if self.choices is not None and not hasattr"" django/db/models/fields/__init__.py"
+28,30,1,2467866239166654,2467866628432878,0,0,python reproduce_issue.py
+29,31,1,2467866631553769,2467866767289543,0,0,git diff django/db/models/fields/__init__.py
+30,32,1,2467866770369387,2467866895733940,0,0,git diff -- django/db/models/fields/__init__.py > patch.txt
+31,33,1,2467866898910025,2467867016512470,0,0,cat patch.txt
+32,34,1,2467867019843665,2467867138867000,,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt

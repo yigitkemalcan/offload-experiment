@@ -50,16 +50,19 @@ def _docker(*args: str) -> str:
     return subprocess.run(["docker", *args], check=True, capture_output=True, text=True).stdout.strip()
 
 
-def prepare(image: str, private: Path, name: str, files: dict[str, Path], pristine: dict[str, str] | None = None) -> dict:
+def prepare(image: str, private: Path, name: str, files: dict[str, Path], pristine: dict[str, str] | None = None,
+            python: str = HELPER_PYTHON) -> dict:
     """Copy image + files (container path under /opt -> host path) into private/, evicted from the cache.
     pristine: image directory -> container path inside a copied directory, for a second, untouched copy of it
-    (e.g. {"/testbed": "/opt/mswea-replay/pristine/testbed"}), to restore it from later."""
+    (e.g. {"/testbed": "/opt/mswea-replay/pristine/testbed"}), to restore it from later.
+    python: the helper's interpreter (default: the agent runtime, which must then be one of the files; the
+    DABStep replay uses its image's own)."""
     private.mkdir(parents=True)
     mounts = [x for dst, src in files.items() for x in ("-v", f"{Path(src).resolve()}:{dst}:ro")]
     extra = [x for src, dst in (pristine or {}).items() for x in ("--pristine", f"{src}={dst}")]
     out = _docker("run", "--rm", "--name", name, "--network", "none", *mounts,
                   "-v", f"{Path(__file__).resolve()}:/private_root.py:ro", "-v", f"{private.resolve()}:/private",
-                  image, HELPER_PYTHON, "-I", "-B", "/private_root.py", "/private", *extra)
+                  image, python, "-I", "-B", "/private_root.py", "/private", *extra)
     return json.loads(out.splitlines()[-1])
 
 

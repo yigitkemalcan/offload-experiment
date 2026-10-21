@@ -1,0 +1,77 @@
+index,step,action,start_ns,end_ns,returncode,orig_returncode,command
+0,1,1,2464837225652838,2464837416095383,0,0,ls -la
+1,1,2,2464837416114720,2464837992797940,0,0,"find . -type f -name ""*.py"" | grep -i postgres"
+2,1,3,2464837992817566,2464838222376268,0,0,"find . -type f -name ""*.py"" | grep -i dbshell"
+3,2,1,2464838232602568,2464838350104661,0,0,cat ./tests/dbshell/test_postgresql.py
+4,2,2,2464838350125560,2464838467357316,0,0,cat ./django/core/management/commands/dbshell.py
+5,2,3,2464838467380840,2464838584198882,0,0,cat ./django/db/backends/postgresql/client.py
+6,3,1,2464838591248045,2464838819751652,0,0,"find . -type f -name ""*.py"" | grep -i base"
+7,4,1,2464838823647294,2464838941731770,0,0,cat ./django/db/backends/base/client.py
+8,5,1,2464838944446862,2464839061818495,0,0,cat ./django/db/backends/postgresql/base.py
+9,6,1,2464839064646628,2464839183032884,1,1,grep -n 'ssl' ./django/db/backends/postgresql/base.py
+10,7,1,2464839185773354,2464839304208412,0,0,grep -A 20 'get_connection_params' ./django/db/backends/postgresql/base.py
+11,8,1,2464839306897325,2464839426059554,1,1,psql --help | grep -i ssl
+12,10,1,2464839428878290,2464839549556046,1,1,grep -r 'ssl' ./django/db/backends/postgresql/
+13,11,1,2464839551840311,2464839668625030,1,1,grep -n 'ssl' ./django/db/backends/postgresql/client.py
+14,13,1,2464839670975360,2464839788099303,0,0,cat ./django/db/backends/postgresql/client.py
+15,14,1,2464839790757689,2464839905730833,0,0,"echo ""Checking PostgreSQL psql SSL options"" && echo ""Based on PostgreSQL documentation, the psql command supports the following SSL options:"" && echo ""- sslmode: Set the SSL mode (disable, allow, prefer, require, verify-ca, verify-full)"" && echo ""- sslcert: Set the client certificate file name"" && echo ""- sslkey: Set the client private key file name"" && echo ""- sslrootcert: Set the name of the file containing SSL certificate authority (CA) certificate(s)"""
+16,15,1,2464839908559588,2464840029166004,1,1,"cp ./django/db/backends/postgresql/client.py ./django/db/backends/postgresql/client.py.bak && sed -i '/args += \[dbname\]/a \
+        # Add SSL options from connection parameters
+        for ssl_option in (""sslmode"", ""sslcert"", ""sslkey"", ""sslrootcert""):
+            if ssl_option in conn_params:
+                args += [""-"" + ssl_option, conn_params[ssl_option]]' ./django/db/backends/postgresql/client.py"
+17,16,1,2464840031957168,2464840153363809,0,0,"cat > ./django/db/backends/postgresql/client.py.tmp << 'EOF'
+import os
+import signal
+import subprocess
+
+from django.db.backends.base.client import BaseDatabaseClient
+
+
+class DatabaseClient(BaseDatabaseClient):
+    executable_name = 'psql'
+
+    @classmethod
+    def runshell_db(cls, conn_params):
+        args = [cls.executable_name]
+
+        host = conn_params.get('host', '')
+        port = conn_params.get('port', '')
+        dbname = conn_params.get('database', '')
+        user = conn_params.get('user', '')
+        passwd = conn_params.get('password', '')
+
+        if user:
+            args += ['-U', user]
+        if host:
+            args += ['-h', host]
+        if port:
+            args += ['-p', str(port)]
+        args += [dbname]
+
+        # Add SSL options from connection parameters
+        for ssl_option in (""sslmode"", ""sslcert"", ""sslkey"", ""sslrootcert""):
+            if ssl_option in conn_params:
+                args += [""-"" + ssl_option, conn_params[ssl_option]]
+
+        sigint_handler = signal.getsignal(signal.SIGINT)
+        subprocess_env = os.environ.copy()
+        if passwd:
+            subprocess_env['PGPASSWORD'] = str(passwd)
+        try:
+            # Allow SIGINT to pass to psql to abort queries.
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            subprocess.run(args, check=True, env=subprocess_env)
+        finally:
+            # Restore the original SIGINT handler.
+            signal.signal(signal.SIGINT, sigint_handler)
+
+    def runshell(self):
+        DatabaseClient.runshell_db(self.connection.get_connection_params())
+EOF
+
+mv ./django/db/backends/postgresql/client.py.tmp ./django/db/backends/postgresql/client.py"
+18,17,1,2464840155951562,2464840274067262,1,1,diff -u ./django/db/backends/postgresql/client.py.bak ./django/db/backends/postgresql/client.py
+19,18,1,2464840276422761,2464840409391992,0,0,git diff -- django/db/backends/postgresql/client.py > patch.txt
+20,19,1,2464840411747781,2464840530004050,0,0,cat patch.txt
+21,20,1,2464840532819239,2464840649984836,,,echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat patch.txt
